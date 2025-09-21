@@ -2,34 +2,116 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Gymnastics Judge with Replay</title>
+  <title>Gymnastics Judge</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body { margin: 0; text-align: center; background: #111; color: white; }
-    canvas { position: absolute; top: 0; left: 0; }
-    video { display: none; }
-    #controls { margin: 20px; }
-    #score { font-size: 24px; margin: 10px; }
-    #log { max-height: 200px; overflow-y: auto; border: 1px solid #444; padding: 10px; margin: 10px; background: #222; text-align: left; }
-    #playback { display: none; margin-top: 20px; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: white;
+      overflow: hidden;
+    }
+    #score {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 24px;
+      font-weight: bold;
+      background: rgba(0,0,0,0.6);
+      padding: 6px 12px;
+      border-radius: 8px;
+      z-index: 10;
+    }
+    #controls {
+      position: fixed;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 10;
+    }
+    button {
+      background: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 16px;
+      flex: 1;
+    }
+    button:disabled {
+      background: #555;
+    }
+    #log {
+      position: fixed;
+      top: 50px;
+      right: 5px;
+      max-height: 60%;
+      width: 40%;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.7);
+      padding: 8px;
+      font-size: 14px;
+      border-radius: 8px;
+      display: none; /* hidden by default on phone */
+    }
+    #toggleLog {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 10;
+      background: #28a745;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
+      padding: 0;
+    }
+    canvas, video {
+      width: 100%;
+      height: 100vh;
+      object-fit: cover;
+    }
+    #playback {
+      display: none;
+      padding: 20px;
+      text-align: center;
+    }
+    #replayVideo {
+      width: 100%;
+      max-height: 60vh;
+      background: black;
+    }
+    #replayLog {
+      margin-top: 10px;
+      text-align: left;
+      background: #222;
+      padding: 10px;
+      border-radius: 8px;
+      max-height: 30vh;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>
-  <h1>🤸 Gymnastics Judge (Prototype)</h1>
-
-  <div id="controls">
-    <button id="startBtn">Start Recording</button>
-    <button id="stopBtn" disabled>Stop Recording</button>
-    <button onclick="downloadLog()">Download Deductions Log</button>
-  </div>
-
   <div id="score">Score: 10.0</div>
+  <button id="toggleLog">≡</button>
   <div id="log"></div>
 
   <video id="video" autoplay playsinline></video>
   <canvas id="output"></canvas>
+
+  <div id="controls">
+    <button id="startBtn">Start</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <button onclick="downloadLog()">Log</button>
+  </div>
 
   <div id="playback">
     <h2>Playback</h2>
@@ -66,7 +148,6 @@
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
 
-      // Recorder for video
       mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
 
@@ -90,7 +171,6 @@
             }
           }
 
-          // Example deduction rule: knee bend
           let leftHip = keypoints.find(k => k.name === "left_hip");
           let leftKnee = keypoints.find(k => k.name === "left_knee");
           let leftAnkle = keypoints.find(k => k.name === "left_ankle");
@@ -136,7 +216,6 @@
         let replayVideo = document.getElementById("replayVideo");
         replayVideo.src = url;
 
-        // Show deductions synced
         let replayLog = document.getElementById("replayLog");
         replayLog.innerHTML = deductions.map(d => `<div>${d.time}s: ${d.issue} (-${d.deduct})</div>`).join("");
 
@@ -152,6 +231,11 @@
       a.download = "deductions_log.json";
       a.click();
     }
+
+    document.getElementById("toggleLog").onclick = () => {
+      let log = document.getElementById("log");
+      log.style.display = log.style.display === "none" ? "block" : "none";
+    };
 
     init();
   </script>
