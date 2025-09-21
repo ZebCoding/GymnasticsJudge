@@ -7,82 +7,167 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; text-align: center; background: #111; color: white; }
     video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin-top: 10px; }
+    canvas { display: none; }
     .score { font-size: 2em; margin: 20px 0; }
     button { padding: 12px 20px; margin: 10px; font-size: 1em; border: none; border-radius: 8px; background: #007BFF; color: white; }
     button:hover { background: #0056b3; }
+    button:disabled { background: #555; }
   </style>
+  <!-- Load MediaPipe Pose -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 </head>
 <body>
   <h1>Gymnastics Judge AI</h1>
   <video id="camera" autoplay playsinline></video>
-  <canvas id="snapshot" style="display:none;"></canvas>
+  <canvas id="snapshot"></canvas>
   <div class="score">Score: <span id="score">10.0</span></div>
 
-  <button onclick="location.href='deductions.html'">View Deductions</button>
+  <button id="startRoutine">Start Routine</button>
+  <button id="endRoutine" disabled>End Routine</button>
+  <button id="viewDeductions" onclick="location.href='deductions.html'">View Deductions</button>
   <button id="clearLog">Clear Log</button>
-  <button id="downloadVideo">Download Routine Video</button>
 
   <script>
     const video = document.getElementById('camera');
-    const scoreDisplay = document.getElementById('score');
     const canvas = document.getElementById('snapshot');
     const ctx = canvas.getContext('2d');
+    const scoreDisplay = document.getElementById('score');
+
+    const startBtn = document.getElementById('startRoutine');
+    const endBtn = document.getElementById('endRoutine');
     const clearLogBtn = document.getElementById('clearLog');
-    const downloadVideoBtn = document.getElementById('downloadVideo');
 
     let score = 10.0;
     let deductions = [];
+    let mediaStream;
     let mediaRecorder;
     let recordedChunks = [];
+    let routineStarted = false;
 
-    // Get camera stream (video only)
+    // Get camera
     navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => {
-        video.srcObject = stream;
-
-        // Setup recording
-        mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
-        mediaRecorder.ondataavailable = e => {
-          if (e.data.size > 0) recordedChunks.push(e.data);
-        };
-        mediaRecorder.onstop = () => {
-          const blob = new Blob(recordedChunks, { type: "video/webm" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `routine_${Date.now()}.webm`;
-          a.click();
-          URL.revokeObjectURL(url);
-          recordedChunks = [];
-        };
-        mediaRecorder.start();
-      })
+      .then(stream => { mediaStream = stream; video.srcObject = stream; })
       .catch(err => { alert('Camera not available: ' + err); });
 
-    // Simulated detection & scoring
-    setInterval(() => {
-      if (Math.random() > 0.7) { // simulate a deduction
-        let deduction = 0.1 + Math.random() * 0.3;
-        score = Math.max(0, score - deduction);
+    // Utility functions
+    function calculateAngle(A, B, C) {
+      const AB = {x: B.x - A.x, y: B.y - A.y};
+      const CB = {x: B.x - C.x, y: B.y - C.y};
+      const dot = AB.x * CB.x + AB.y * CB.y;
+      const magAB = Math.sqrt(AB.x*AB.x + AB.y*AB.y);
+      const magCB = Math.sqrt(CB.x*CB.x + CB.y*CB.y);
+      const angle = Math.acos(dot / (magAB * magCB)) * (180/Math.PI);
+      return angle;
+    }
 
-        // Take snapshot
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        let imageData = canvas.toDataURL('image/png');
+    function distance(A, B) {
+      return Math.sqrt((A.x - B.x)**2 + (A.y - B.y)**2);
+    }
 
-        let event = {
-          time: new Date().toLocaleTimeString(),
-          reason: "Legs bent / apart",
-          deduction: deduction.toFixed(1),
-          remaining: score.toFixed(1),
-          snapshot: imageData
-        };
-        deductions.push(event);
-        scoreDisplay.textContent = score.toFixed(1);
-        localStorage.setItem('deductionsLog', JSON.stringify(deductions));
-      }
-    }, 3000);
+    // Setup MediaPipe Pose
+    const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`});
+    pose.setOptions({modelComplexity: 1, smoothLandmarks: true, enableSegmentation: false});
+    pose.onResults(onResults);
+
+    async function detectPose() {
+      if (!routineStarted) return;
+      await pose.send({image: video});
+      requestAnimationFrame(detectPose);
+    }
+
+    function onResults(results) {
+      if (!results.poseLandmarks) return;
+
+      const landmarks = results.poseLandmarks;
+
+      // Map keypoints
+      const leftHip = landmarks[23], rightHip = landmarks[24];
+      const leftKnee = landmarks[25], rightKnee = landmarks[26];
+      const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
+
+      // Knee angles
+      const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
+      const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
+      const kneeThreshold = 170;
+
+      // Body width
+      const hipDistance = distance(leftHip, rightHip);
+
+      // Ankle distance relative to hip distance
+      const ankleDist = distance(leftAnkle, rightAnkle);
+      const maxDistFactor = 1.5; // allowed max = 1.5x hip distance
+
+      // Check deductions
+      if (leftKneeAngle < kneeThreshold) addDeduction("Left leg bent");
+      if (rightKneeAngle < kneeThreshold) addDeduction("Right leg bent");
+      if (ankleDist > hipDistance * maxDistFactor) addDeduction("Legs too far apart");
+    }
+
+    function addDeduction(reason) {
+      const last = deductions[deductions.length-1];
+      if (last && last.reason === reason) return; // avoid duplicates per frame
+
+      score = Math.max(0, score - 0.2);
+
+      // Snapshot
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = canvas.toDataURL('image/png');
+
+      const event = {
+        time: new Date().toLocaleTimeString(),
+        reason: reason,
+        deduction: 0.2,
+        remaining: score.toFixed(1),
+        snapshot: imageData
+      };
+      deductions.push(event);
+      scoreDisplay.textContent = score.toFixed(1);
+      localStorage.setItem('deductionsLog', JSON.stringify(deductions));
+    }
+
+    // Start routine
+    startBtn.addEventListener('click', () => {
+      if (!mediaStream) return alert("Camera not ready yet");
+
+      routineStarted = true;
+      startBtn.disabled = true;
+      endBtn.disabled = false;
+
+      // Reset score & log
+      score = 10.0;
+      deductions = [];
+      scoreDisplay.textContent = score.toFixed(1);
+      localStorage.removeItem('deductionsLog');
+
+      // Setup MediaRecorder
+      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/webm" });
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `routine_${Date.now()}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        recordedChunks = [];
+      };
+      mediaRecorder.start();
+
+      detectPose(); // start detection
+    });
+
+    // End routine
+    endBtn.addEventListener('click', () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+      routineStarted = false;
+      startBtn.disabled = false;
+      endBtn.disabled = true;
+      alert("Routine ended. Video saved. Ready for next routine.");
+    });
 
     // Clear log
     clearLogBtn.addEventListener("click", () => {
@@ -91,13 +176,6 @@
       scoreDisplay.textContent = score.toFixed(1);
       localStorage.removeItem('deductionsLog');
       alert("Log cleared, score reset.");
-    });
-
-    // Download video
-    downloadVideoBtn.addEventListener("click", () => {
-      if (mediaRecorder && mediaRecorder.state === "recording") {
-        mediaRecorder.stop();
-      }
     });
   </script>
 </body>
