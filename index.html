@@ -50,6 +50,12 @@
     // Control repeated deductions: per-reason cooldown in milliseconds
     const DEDUCTION_COOLDOWN_MS = 1500;
     let lastDeductionAt = {}; // reason -> timestamp (performance.now())
+    
+    // Detection loop monitoring
+    let lastDetectionTime = 0;
+    let detectionLoopRunning = false;
+    let poseFailureCount = 0;
+    const MAX_POSE_FAILURES = 10;
 
     // Get camera
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -63,7 +69,24 @@
       const dot = AB.x * CB.x + AB.y * CB.y;
       const magAB = Math.sqrt(AB.x*AB.x + AB.y*AB.y);
       const magCB = Math.sqrt(CB.x*CB.x + CB.y*CB.y);
-      const angle = Math.acos(dot / (magAB * magCB)) * (180/Math.PI);
+      
+      // Prevent division by zero or invalid angles
+      if (magAB === 0 || magCB === 0) {
+        console.log('Warning: Zero magnitude in angle calculation');
+        return 180; // Return straight line angle as default
+      }
+      
+      const cosAngle = dot / (magAB * magCB);
+      // Clamp to valid range for acos to prevent NaN
+      const clampedCos = Math.max(-1, Math.min(1, cosAngle));
+      const angle = Math.acos(clampedCos) * (180/Math.PI);
+      
+      // Validate result
+      if (isNaN(angle)) {
+        console.log('Warning: NaN angle calculated, returning 180°');
+        return 180;
+      }
+      
       return angle;
     }
 
@@ -77,8 +100,27 @@
     pose.onResults(onResults);
 
     async function detectPose() {
-      if (!routineStarted) return;
-      await pose.send({image: video});
+      if (!routineStarted) {
+        detectionLoopRunning = false;
+        return;
+      }
+      
+      detectionLoopRunning = true;
+      lastDetectionTime = performance.now();
+      
+      try {
+        await pose.send({image: video});
+        poseFailureCount = 0; // Reset failure count on success
+      } catch (error) {
+        console.error('Pose detection error:', error);
+        poseFailureCount++;
+        
+        if (poseFailureCount >= MAX_POSE_FAILURES) {
+          console.log('Too many pose detection failures, restarting MediaPipe');
+          await restartPoseDetection();
+        }
+      }
+      
       requestAnimationFrame(detectPose);
     }
 
@@ -120,6 +162,7 @@
         console.log(`Measurements - Knee angles L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
         console.log(`Distances - Hips:${hipDistance.toFixed(3)} Ankles:${ankleDist.toFixed(3)} Knees:${kneeDist.toFixed(3)}`);
         console.log(`Ratios - Ankle/Hip:${(ankleDist/hipDistance).toFixed(2)} Knee/Hip:${(kneeDist/hipDistance).toFixed(2)}`);
+        console.log(`Cooldowns - Left leg: ${((performance.now() - (lastDeductionAt['Left leg bent'] || 0))/1000).toFixed(1)}s ago, Right leg: ${((performance.now() - (lastDeductionAt['Right leg bent'] || 0))/1000).toFixed(1)}s ago`);
       }
 
       // Body width measurements
@@ -138,10 +181,16 @@
       if (leftKneeAngle < kneeThreshold) {
         console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
         addDeduction("Left leg bent");
+      } else if (leftKneeAngle < kneeThreshold + 5) {
+        // Log near-misses to see if angles are fluctuating around threshold
+        console.log(`Left leg close to bent: ${leftKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
       }
+      
       if (rightKneeAngle < kneeThreshold) {
         console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
         addDeduction("Right leg bent");
+      } else if (rightKneeAngle < kneeThreshold + 5) {
+        console.log(`Right leg close to bent: ${rightKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
       }
       // Multiple checks for legs too far apart
       const ankleRatio = ankleDist / hipDistance;
