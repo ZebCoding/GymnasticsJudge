@@ -207,7 +207,10 @@
     }
     
     function drawPoseSkeleton(landmarks) {
-      if (!landmarks || !debugCtx) return;
+      if (!landmarks || !debugCtx || !debugCanvas) {
+        console.log('Skeleton draw skipped - missing:', {landmarks: !!landmarks, ctx: !!debugCtx, canvas: !!debugCanvas});
+        return;
+      }
       
       try {
         // Set canvas dimensions to match video (but independent sizing)
@@ -415,8 +418,10 @@
         }
         
         // Only clear skeleton after many failures to keep it visible longer
-        if (showDebug && consecutiveFailures > 20) {
+        // Never clear during routine setup/active states
+        if (showDebug && consecutiveFailures > 20 && routineState === ROUTINE_STATES.WAITING) {
           debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+          console.log('Skeleton cleared due to many consecutive failures (waiting state only)');
         }
         return;
       } else {
@@ -428,10 +433,10 @@
 
       const landmarks = results.poseLandmarks;
       
-      // Always draw debug skeleton first (regardless of confidence)
+      // Always draw debug skeleton first (regardless of confidence or routine state)
       if (showDebug) {
         drawPoseSkeleton(landmarks);
-      } else {
+      } else if (debugCtx && debugCanvas.width > 0) {
         debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
       }
 
@@ -670,12 +675,18 @@
       // Reset salute detection
       
       console.log('Routine state: WAITING → SETUP (waiting for salute, no deductions)');
+      console.log('Skeleton should remain visible during routine setup');
       
       startBtn.textContent = 'Waiting for Salute...';
       startBtn.disabled = true;
       
       poseStatus.textContent = 'Ready - Waiting for Salute';
       poseStatus.style.color = '#ff9800';
+      
+      // Ensure skeleton visibility is maintained
+      if (showDebug) {
+        console.log('Ready for routine - skeleton should remain visible');
+      }
       
       console.log('Gesture detection activated - raise one arm to salute and start routine');
       // Pose detection is already running continuously
