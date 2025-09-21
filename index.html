@@ -81,13 +81,22 @@
       .then(stream => { 
         mediaStream = stream; 
         video.srcObject = stream;
-        // Start pose detection as soon as video loads
-        video.onloadeddata = () => {
-          console.log('Video loaded, starting pose detection');
-          detectPose();
-        };
+        console.log('Camera stream obtained');
+        
+        // Start pose detection when video is ready
+        video.addEventListener('loadeddata', () => {
+          console.log('Video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
+          // Wait a moment for video to stabilize
+          setTimeout(() => {
+            console.log('Starting pose detection...');
+            detectPose();
+          }, 1000);
+        });
       })
-      .catch(err => { alert('Camera not available: ' + err); });
+      .catch(err => { 
+        console.error('Camera error:', err);
+        alert('Camera not available: ' + err); 
+      });
 
     // Utility functions
     function calculateAngle(A, B, C) {
@@ -223,10 +232,28 @@
       return headLowered && torsoLeaning;
     }
 
-    // Setup MediaPipe Pose
-    const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`});
-    pose.setOptions({modelComplexity: 1, smoothLandmarks: true, enableSegmentation: false});
-    pose.onResults(onResults);
+    // Setup MediaPipe Pose with error handling
+    let pose;
+    try {
+      console.log('Initializing MediaPipe Pose...');
+      pose = new Pose({locateFile: (file) => {
+        const url = `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`;
+        console.log('Loading MediaPipe file:', url);
+        return url;
+      }});
+      pose.setOptions({
+        modelComplexity: 1, 
+        smoothLandmarks: true, 
+        enableSegmentation: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      pose.onResults(onResults);
+      console.log('MediaPipe Pose initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize MediaPipe Pose:', error);
+      alert('Failed to load pose detection. Please refresh the page.');
+    }
 
     async function detectPose() {
       // Always run pose detection (not just during routine)
@@ -252,15 +279,20 @@
     }
 
     function onResults(results) {
+      // Add detailed debugging
+      console.log('onResults called, pose landmarks:', !!results.poseLandmarks);
+      
       if (!results.poseLandmarks) {
-        console.log('No pose landmarks detected');
-        poseStatus.textContent = 'Pose: Not detected';
+        console.log('No pose landmarks detected - check lighting and body visibility');
+        poseStatus.textContent = 'Pose: Not detected - check lighting';
         poseStatus.style.color = '#888';
         // Clear debug canvas when no pose detected
         if (showDebug) {
           debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
         }
         return;
+      } else {
+        console.log('Pose landmarks detected! Count:', results.poseLandmarks.length);
       }
 
       const landmarks = results.poseLandmarks;
@@ -351,34 +383,38 @@
       // Also check absolute distance (for very wide stances)
       const maxAbsoluteAnkleDist = 0.3; // normalized coordinate distance
 
-      // Check deductions with debugging
-      if (leftKneeAngle < kneeThreshold) {
-        console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
-        addDeduction("Left leg bent");
-      } else if (leftKneeAngle < kneeThreshold + 5) {
-        // Log near-misses to see if angles are fluctuating around threshold
-        console.log(`Left leg close to bent: ${leftKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
+      // Check deductions with debugging - ONLY during routine
+      if (routineStarted) {
+        if (leftKneeAngle < kneeThreshold) {
+          console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
+          addDeduction("Left leg bent");
+        } else if (leftKneeAngle < kneeThreshold + 5) {
+          // Log near-misses to see if angles are fluctuating around threshold
+          console.log(`Left leg close to bent: ${leftKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
+        }
+        
+        if (rightKneeAngle < kneeThreshold) {
+          console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
+          addDeduction("Right leg bent");
+        } else if (rightKneeAngle < kneeThreshold + 5) {
+          console.log(`Right leg close to bent: ${rightKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
+        }
       }
-      
-      if (rightKneeAngle < kneeThreshold) {
-        console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
-        addDeduction("Right leg bent");
-      } else if (rightKneeAngle < kneeThreshold + 5) {
-        console.log(`Right leg close to bent: ${rightKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
-      }
-      // Multiple checks for legs too far apart
-      const ankleRatio = ankleDist / hipDistance;
-      const kneeRatio = kneeDist / hipDistance;
-      
-      if (ankleRatio > maxAnkleDistFactor) {
-        console.log(`Legs apart (ankle ratio): ${ankleRatio.toFixed(2)} > ${maxAnkleDistFactor}`);
-        addDeduction("Legs too far apart");
-      } else if (kneeRatio > maxKneeDistFactor) {
-        console.log(`Legs apart (knee ratio): ${kneeRatio.toFixed(2)} > ${maxKneeDistFactor}`);
-        addDeduction("Legs too far apart");
-      } else if (ankleDist > maxAbsoluteAnkleDist) {
-        console.log(`Legs apart (absolute): ${ankleDist.toFixed(3)} > ${maxAbsoluteAnkleDist}`);
-        addDeduction("Legs too far apart");
+      // Multiple checks for legs too far apart - ONLY during routine
+      if (routineStarted) {
+        const ankleRatio = ankleDist / hipDistance;
+        const kneeRatio = kneeDist / hipDistance;
+        
+        if (ankleRatio > maxAnkleDistFactor) {
+          console.log(`Legs apart (ankle ratio): ${ankleRatio.toFixed(2)} > ${maxAnkleDistFactor}`);
+          addDeduction("Legs too far apart");
+        } else if (kneeRatio > maxKneeDistFactor) {
+          console.log(`Legs apart (knee ratio): ${kneeRatio.toFixed(2)} > ${maxKneeDistFactor}`);
+          addDeduction("Legs too far apart");
+        } else if (ankleDist > maxAbsoluteAnkleDist) {
+          console.log(`Legs apart (absolute): ${ankleDist.toFixed(3)} > ${maxAbsoluteAnkleDist}`);
+          addDeduction("Legs too far apart");
+        }
       }
     }
 
