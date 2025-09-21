@@ -6,10 +6,12 @@
   <title>Gymnastics Judge AI</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; text-align: center; background: #111; color: white; }
-    video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin-top: 10px; }
+    video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin: 10px; }
     canvas { display: none; }
-    #debugCanvas { display: block; position: absolute; pointer-events: none; border: 2px solid #444; border-radius: 12px; }
-    .video-container { position: relative; display: inline-block; }
+    #debugCanvas { display: block; border: 2px solid #444; border-radius: 12px; margin: 10px; max-width: 480px; }
+    .video-container { display: flex; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+    .video-section { text-align: center; }
+    .video-section h3 { margin: 5px 0; color: white; font-size: 1.1em; }
     .score { font-size: 2em; margin: 20px 0; }
     button { padding: 12px 20px; margin: 10px; font-size: 1em; border: none; border-radius: 8px; background: #007BFF; color: white; }
     button:hover { background: #0056b3; }
@@ -22,8 +24,14 @@
 <body>
   <h1>Gymnastics Judge AI</h1>
   <div class="video-container">
-    <video id="camera" autoplay playsinline></video>
-    <canvas id="debugCanvas"></canvas>
+    <div class="video-section">
+      <h3>Camera Feed</h3>
+      <video id="camera" autoplay playsinline></video>
+    </div>
+    <div class="video-section">
+      <h3>Pose Detection</h3>
+      <canvas id="debugCanvas"></canvas>
+    </div>
   </div>
   <canvas id="snapshot"></canvas>
   <div class="score">Score: <span id="score">10.0</span></div>
@@ -67,6 +75,11 @@
     let detectionLoopRunning = false;
     let poseFailureCount = 0;
     const MAX_POSE_FAILURES = 10;
+    
+    // Frame rate limiting to prevent freezing
+    let lastFrameTime = 0;
+    const TARGET_FPS = 15; // Limit to 15fps for better stability
+    const FRAME_INTERVAL = 1000 / TARGET_FPS;
     
     // Gesture detection
     let waitingForSalute = false;
@@ -157,11 +170,20 @@
     function drawPoseSkeleton(landmarks) {
       if (!landmarks) return;
       
-      // Resize debug canvas to match video
-      debugCanvas.width = video.videoWidth;
-      debugCanvas.height = video.videoHeight;
-      debugCanvas.style.width = video.offsetWidth + 'px';
-      debugCanvas.style.height = video.offsetHeight + 'px';
+      // Set canvas dimensions to match video (but independent sizing)
+      const videoWidth = video.videoWidth || 640;
+      const videoHeight = video.videoHeight || 480;
+      const displayWidth = Math.min(480, videoWidth);
+      const displayHeight = (displayWidth * videoHeight) / videoWidth;
+      
+      // Only resize if dimensions changed
+      if (debugCanvas.width !== videoWidth || debugCanvas.height !== videoHeight) {
+        debugCanvas.width = videoWidth;
+        debugCanvas.height = videoHeight;
+        debugCanvas.style.width = displayWidth + 'px';
+        debugCanvas.style.height = displayHeight + 'px';
+        console.log('Canvas resized to:', videoWidth, 'x', videoHeight, 'display:', displayWidth, 'x', displayHeight);
+      }
       
       // Clear previous frame
       debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
@@ -256,12 +278,21 @@
     }
 
     async function detectPose() {
+      const now = performance.now();
+      
+      // Frame rate limiting to prevent freezing
+      if (now - lastFrameTime < FRAME_INTERVAL) {
+        requestAnimationFrame(detectPose);
+        return;
+      }
+      lastFrameTime = now;
+      
       // Always run pose detection (not just during routine)
       detectionLoopRunning = true;
-      lastDetectionTime = performance.now();
+      lastDetectionTime = now;
       
       try {
-        if (video.readyState >= 2) { // Video has data
+        if (video.readyState >= 2 && video.videoWidth > 0) { // Video has data and dimensions
           await pose.send({image: video});
           poseFailureCount = 0;
         }
@@ -270,7 +301,7 @@
         poseFailureCount++;
         
         if (poseFailureCount >= MAX_POSE_FAILURES) {
-          console.log('Too many pose detection failures');
+          console.log('Too many pose detection failures, will retry');
           poseFailureCount = 0; // Reset and try again
         }
       }
