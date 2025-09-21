@@ -15,18 +15,48 @@
 <body>
   <h1>Gymnastics Judge AI</h1>
   <video id="camera" autoplay playsinline></video>
+  <canvas id="snapshot" style="display:none;"></canvas>
   <div class="score">Score: <span id="score">10.0</span></div>
+
   <button onclick="location.href='deductions.html'">View Deductions</button>
+  <button id="clearLog">Clear Log</button>
+  <button id="downloadVideo">Download Routine Video</button>
 
   <script>
     const video = document.getElementById('camera');
     const scoreDisplay = document.getElementById('score');
+    const canvas = document.getElementById('snapshot');
+    const ctx = canvas.getContext('2d');
+    const clearLogBtn = document.getElementById('clearLog');
+    const downloadVideoBtn = document.getElementById('downloadVideo');
+
     let score = 10.0;
     let deductions = [];
+    let mediaRecorder;
+    let recordedChunks = [];
 
     // Get camera stream
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => { video.srcObject = stream; })
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then(stream => {
+        video.srcObject = stream;
+
+        // Setup recording
+        mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+        mediaRecorder.ondataavailable = e => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: "video/webm" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `routine_${Date.now()}.webm`;
+          a.click();
+          URL.revokeObjectURL(url);
+          recordedChunks = [];
+        };
+        mediaRecorder.start();
+      })
       .catch(err => { alert('Camera not available: ' + err); });
 
     // Simulated detection & scoring
@@ -34,17 +64,41 @@
       if (Math.random() > 0.7) {
         let deduction = 0.1 + Math.random() * 0.3;
         score = Math.max(0, score - deduction);
+
+        // Take snapshot
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        let imageData = canvas.toDataURL('image/png');
+
         let event = {
           time: new Date().toLocaleTimeString(),
           reason: "Legs bent / apart",
           deduction: deduction.toFixed(1),
-          remaining: score.toFixed(1)
+          remaining: score.toFixed(1),
+          snapshot: imageData
         };
         deductions.push(event);
         scoreDisplay.textContent = score.toFixed(1);
         localStorage.setItem('deductionsLog', JSON.stringify(deductions));
       }
     }, 3000);
+
+    // Clear log
+    clearLogBtn.addEventListener("click", () => {
+      deductions = [];
+      score = 10.0;
+      scoreDisplay.textContent = score.toFixed(1);
+      localStorage.removeItem('deductionsLog');
+      alert("Log cleared, score reset.");
+    });
+
+    // Download video (stops current recording session)
+    downloadVideoBtn.addEventListener("click", () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+      }
+    });
   </script>
 </body>
 </html>
