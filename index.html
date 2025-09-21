@@ -8,6 +8,8 @@
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; text-align: center; background: #111; color: white; }
     video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin-top: 10px; }
     canvas { display: none; }
+    #debugCanvas { display: block; position: absolute; pointer-events: none; border: 2px solid #444; border-radius: 12px; }
+    .video-container { position: relative; display: inline-block; }
     .score { font-size: 2em; margin: 20px 0; }
     button { padding: 12px 20px; margin: 10px; font-size: 1em; border: none; border-radius: 8px; background: #007BFF; color: white; }
     button:hover { background: #0056b3; }
@@ -19,7 +21,10 @@
 </head>
 <body>
   <h1>Gymnastics Judge AI</h1>
-  <video id="camera" autoplay playsinline></video>
+  <div class="video-container">
+    <video id="camera" autoplay playsinline></video>
+    <canvas id="debugCanvas"></canvas>
+  </div>
   <canvas id="snapshot"></canvas>
   <div class="score">Score: <span id="score">10.0</span></div>
   <div id="poseStatus" style="color: #888; font-size: 0.9em; margin: 10px 0;">Pose: Not detecting</div>
@@ -28,17 +33,23 @@
   <button id="endRoutine" disabled>Manual End</button>
   <button id="viewDeductions" onclick="location.href='deductions.html'">View Deductions</button>
   <button id="clearLog">Clear Log</button>
+  <button id="toggleDebug">Show Pose Debug</button>
 
   <script>
     const video = document.getElementById('camera');
     const canvas = document.getElementById('snapshot');
     const ctx = canvas.getContext('2d');
+    const debugCanvas = document.getElementById('debugCanvas');
+    const debugCtx = debugCanvas.getContext('2d');
     const scoreDisplay = document.getElementById('score');
     const poseStatus = document.getElementById('poseStatus');
 
     const startBtn = document.getElementById('startRoutine');
     const endBtn = document.getElementById('endRoutine');
     const clearLogBtn = document.getElementById('clearLog');
+    const toggleDebugBtn = document.getElementById('toggleDebug');
+    
+    let showDebug = true; // Start with debug visible
 
     let score = 10.0;
     let deductions = [];
@@ -126,6 +137,65 @@
       return leftRaised || rightRaised;
     }
     
+    function drawPoseSkeleton(landmarks) {
+      if (!landmarks) return;
+      
+      // Resize debug canvas to match video
+      debugCanvas.width = video.videoWidth;
+      debugCanvas.height = video.videoHeight;
+      debugCanvas.style.width = video.offsetWidth + 'px';
+      debugCanvas.style.height = video.offsetHeight + 'px';
+      
+      // Clear previous frame
+      debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+      
+      const w = debugCanvas.width;
+      const h = debugCanvas.height;
+      
+      // Draw landmarks as dots
+      debugCtx.fillStyle = '#00ff00';
+      landmarks.forEach((landmark, i) => {
+        if (landmark && landmark.visibility > 0.5) {
+          const x = landmark.x * w;
+          const y = landmark.y * h;
+          debugCtx.beginPath();
+          debugCtx.arc(x, y, 3, 0, 2 * Math.PI);
+          debugCtx.fill();
+          
+          // Label key points
+          if ([0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].includes(i)) {
+            debugCtx.fillStyle = '#ffffff';
+            debugCtx.font = '10px Arial';
+            debugCtx.fillText(i, x + 5, y - 5);
+            debugCtx.fillStyle = '#00ff00';
+          }
+        }
+      });
+      
+      // Draw skeleton connections
+      debugCtx.strokeStyle = '#ff0000';
+      debugCtx.lineWidth = 2;
+      
+      // Define body connections (MediaPipe pose connections)
+      const connections = [
+        [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // Arms
+        [11, 23], [12, 24], [23, 24], // Torso
+        [23, 25], [25, 27], [24, 26], [26, 28], // Legs
+        [0, 1], [1, 2], [2, 3], [3, 7], // Head (simplified)
+      ];
+      
+      connections.forEach(([a, b]) => {
+        const pointA = landmarks[a];
+        const pointB = landmarks[b];
+        if (pointA && pointB && pointA.visibility > 0.5 && pointB.visibility > 0.5) {
+          debugCtx.beginPath();
+          debugCtx.moveTo(pointA.x * w, pointA.y * h);
+          debugCtx.lineTo(pointB.x * w, pointB.y * h);
+          debugCtx.stroke();
+        }
+      });
+    }
+    
     function detectBow(landmarks) {
       // Check if person is bowing (head lower than shoulders, torso leaning forward)
       const nose = landmarks[0];
@@ -202,6 +272,13 @@
       // Good pose detection
       poseStatus.textContent = 'Pose: Tracking ✓';
       poseStatus.style.color = '#4caf50';
+      
+      // Draw debug skeleton overlay
+      if (showDebug) {
+        drawPoseSkeleton(landmarks);
+      } else {
+        debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+      }
       
       // Gesture detection for auto start/stop
       if (waitingForSalute && !routineStarted) {
@@ -416,6 +493,15 @@
       scoreDisplay.textContent = score.toFixed(1);
       localStorage.removeItem('deductionsLog');
       alert("Log cleared, score reset.");
+    });
+    
+    // Toggle debug overlay
+    toggleDebugBtn.addEventListener('click', () => {
+      showDebug = !showDebug;
+      toggleDebugBtn.textContent = showDebug ? 'Hide Pose Debug' : 'Show Pose Debug';
+      if (!showDebug) {
+        debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+      }
     });
   </script>
 </body>
