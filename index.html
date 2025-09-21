@@ -24,8 +24,8 @@
   <div class="score">Score: <span id="score">10.0</span></div>
   <div id="poseStatus" style="color: #888; font-size: 0.9em; margin: 10px 0;">Pose: Not detecting</div>
 
-  <button id="startRoutine">Start Routine</button>
-  <button id="endRoutine" disabled>End Routine</button>
+  <button id="startRoutine">Ready for Routine</button>
+  <button id="endRoutine" disabled>Manual End</button>
   <button id="viewDeductions" onclick="location.href='deductions.html'">View Deductions</button>
   <button id="clearLog">Clear Log</button>
 
@@ -56,6 +56,14 @@
     let detectionLoopRunning = false;
     let poseFailureCount = 0;
     const MAX_POSE_FAILURES = 10;
+    
+    // Gesture detection
+    let waitingForSalute = false;
+    let waitingForBow = false;
+    let gestureHoldFrames = 0;
+    const GESTURE_HOLD_REQUIRED = 30; // ~0.5 seconds at 60fps
+    const SALUTE_ARM_ANGLE_THRESHOLD = 45; // arms up angle
+    const BOW_TORSO_ANGLE_THRESHOLD = 30; // forward lean angle
 
     // Get camera
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -92,6 +100,43 @@
 
     function distance(A, B) {
       return Math.sqrt((A.x - B.x)**2 + (A.y - B.y)**2);
+    }
+    
+    function detectSalute(landmarks) {
+      // Check if one arm is raised (gymnastics salute - single arm up)
+      const leftShoulder = landmarks[11], rightShoulder = landmarks[12];
+      const leftWrist = landmarks[15], rightWrist = landmarks[16];
+      
+      if (!leftShoulder || !rightShoulder || !leftWrist || !rightWrist) return false;
+      
+      // One arm raised if either wrist is significantly above its shoulder
+      const leftArmRaised = leftWrist.y < leftShoulder.y - 0.15;
+      const rightArmRaised = rightWrist.y < rightShoulder.y - 0.15;
+      
+      // Salute = one arm up, other arm down (or at least not raised)
+      const leftArmDown = leftWrist.y > leftShoulder.y - 0.05;
+      const rightArmDown = rightWrist.y > rightShoulder.y - 0.05;
+      
+      return (leftArmRaised && rightArmDown) || (rightArmRaised && leftArmDown);
+    }
+    
+    function detectBow(landmarks) {
+      // Check if person is bowing (head lower than shoulders, torso leaning forward)
+      const nose = landmarks[0];
+      const leftShoulder = landmarks[11], rightShoulder = landmarks[12];
+      const leftHip = landmarks[23], rightHip = landmarks[24];
+      
+      if (!nose || !leftShoulder || !rightShoulder || !leftHip || !rightHip) return false;
+      
+      // Calculate average shoulder and hip positions
+      const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+      const hipY = (leftHip.y + rightHip.y) / 2;
+      
+      // Bow detected if nose is below shoulder level and torso is leaning
+      const headLowered = nose.y > shoulderY + 0.05;
+      const torsoLeaning = shoulderY > hipY - 0.15; // shoulders closer to hips indicates forward lean
+      
+      return headLowered && torsoLeaning;
     }
 
     // Setup MediaPipe Pose
@@ -151,6 +196,33 @@
       // Good pose detection
       poseStatus.textContent = 'Pose: Tracking ✓';
       poseStatus.style.color = '#4caf50';
+      
+      // Gesture detection for auto start/stop
+      if (waitingForSalute && !routineStarted) {
+        const isSaluting = detectSalute(landmarks);
+        if (isSaluting) {
+          gestureHoldFrames++;
+          console.log(`Salute detected, holding for ${gestureHoldFrames}/${GESTURE_HOLD_REQUIRED} frames`);
+          if (gestureHoldFrames >= GESTURE_HOLD_REQUIRED) {
+            console.log('Salute confirmed - starting routine!');
+            startRoutineAutomatically();
+          }
+        } else {
+          gestureHoldFrames = 0;
+        }
+      } else if (waitingForBow && routineStarted) {
+        const isBowing = detectBow(landmarks);
+        if (isBowing) {
+          gestureHoldFrames++;
+          console.log(`Bow detected, holding for ${gestureHoldFrames}/${GESTURE_HOLD_REQUIRED} frames`);
+          if (gestureHoldFrames >= GESTURE_HOLD_REQUIRED) {
+            console.log('Bow confirmed - ending routine!');
+            endRoutineAutomatically();
+          }
+        } else {
+          gestureHoldFrames = 0;
+        }
+      }
 
       // Knee angles
       const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
@@ -238,22 +310,25 @@
       scoreDisplay.textContent = score.toFixed(1);
       localStorage.setItem('deductionsLog', JSON.stringify(deductions));
     }
-
-    // Start routine
-    startBtn.addEventListener('click', () => {
-      if (!mediaStream) return alert("Camera not ready yet");
-
+    
+    function startRoutineAutomatically() {
+      if (!mediaStream) return;
+      
       routineStarted = true;
+      waitingForSalute = false;
+      waitingForBow = true;
+      gestureHoldFrames = 0;
+      
       startBtn.disabled = true;
       endBtn.disabled = false;
-
+      
       // Reset score & log
       score = 10.0;
       deductions = [];
       lastDeductionAt = {};
       scoreDisplay.textContent = score.toFixed(1);
       localStorage.removeItem('deductionsLog');
-
+      
       // Setup MediaRecorder
       mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/webm" });
       mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
@@ -268,8 +343,46 @@
         recordedChunks = [];
       };
       mediaRecorder.start();
+      
+      poseStatus.textContent = 'Routine Started - Tracking Performance';
+      poseStatus.style.color = '#ff9800';
+    }
+    
+    function endRoutineAutomatically() {
+      if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+      routineStarted = false;
+      waitingForBow = false;
+      waitingForSalute = false;
+      gestureHoldFrames = 0;
+      
+      startBtn.disabled = false;
+      startBtn.textContent = 'Ready for Routine';
+      endBtn.disabled = true;
+      
+      poseStatus.textContent = 'Routine Complete - Ready for Next';
+      poseStatus.style.color = '#4caf50';
+      
+      alert(`Routine complete! Final Score: ${score.toFixed(1)}`);
+    }
 
-      detectPose(); // start detection
+    // Start routine - now activates gesture detection mode
+    startBtn.addEventListener('click', () => {
+      if (!mediaStream) return alert("Camera not ready yet");
+
+      // Enable gesture detection mode
+      waitingForSalute = true;
+      waitingForBow = false;
+      gestureHoldFrames = 0;
+      
+      startBtn.textContent = 'Waiting for Salute...';
+      startBtn.disabled = true;
+      
+      poseStatus.textContent = 'Ready - Waiting for Salute';
+      poseStatus.style.color = '#ff9800';
+      
+      console.log('Gesture detection activated - raise one arm to salute and start routine');
+
+      detectPose(); // start detection loop
     });
 
     // End routine
