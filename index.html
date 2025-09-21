@@ -303,21 +303,26 @@
       const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
       const hipY = (leftHip.y + rightHip.y) / 2;
       
-      // More sensitive bow detection - multiple methods
-      const headBelowShoulders = nose.y > shoulderY + 0.02; // Reduced from 0.05
-      const significantHeadDrop = nose.y > shoulderY + 0.08; // Significant bow
-      const torsoCompressed = (shoulderY - hipY) < 0.15; // Shoulders closer to hips
+      // Much more strict bow detection to prevent false positives
+      const headBelowShoulders = nose.y > shoulderY + 0.08; // Must be significant drop
+      const verySignificantDrop = nose.y > shoulderY + 0.15; // Very obvious bow
+      const torsoCompressed = (shoulderY - hipY) < 0.12; // Much more compressed torso
       
-      // Accept bow if any of these conditions met
-      const bowDetected = headBelowShoulders || significantHeadDrop || torsoCompressed;
+      // Require MULTIPLE conditions to be met (AND logic, not OR)
+      const bowDetected = headBelowShoulders && torsoCompressed;
+      // OR a very significant head drop alone
+      const obviousBow = verySignificantDrop;
+      
+      const finalBowDetection = bowDetected || obviousBow;
       
       // Debug bow detection occasionally
       if (Math.random() < 0.02) {
         console.log(`Bow check - Nose:${nose.y.toFixed(3)} Shoulder:${shoulderY.toFixed(3)} Hip:${hipY.toFixed(3)}`);
-        console.log(`Head below shoulders: ${headBelowShoulders}, Significant drop: ${significantHeadDrop}, Compressed: ${torsoCompressed}`);
+        console.log(`Head below shoulders: ${headBelowShoulders}, Very significant: ${verySignificantDrop}, Compressed: ${torsoCompressed}`);
+        console.log(`Final bow detection: ${finalBowDetection}`);
       }
       
-      return bowDetected;
+      return finalBowDetection;
     }
 
     // Setup MediaPipe Pose with error handling
