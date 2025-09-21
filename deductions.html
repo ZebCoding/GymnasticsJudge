@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deductions Log</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+    h1 { text-align: center; }
+    .log { margin-top: 20px; }
+    .entry { border-bottom: 1px solid #ddd; padding: 10px 0; }
+    button { display: block; margin: 20px auto; padding: 12px 20px; border: none; border-radius: 8px; background: #007BFF; color: white; }
+    button:hover { background: #0056b3; }
+  </style>
+</head>
+<body>
+  <h1>Deductions Log</h1>
+  <div class="log" id="log"></div>
+  <button onclick="location.href='index.html'">Back to Camera</button>
+
+  <script>
+    const logDiv = document.getElementById('log');
+    const deductions = JSON.parse(localStorage.getItem('deductionsLog')) || [];
+
+    if (deductions.length === 0) {
+      logDiv.innerHTML = "<p>No deductions recorded yet.</p>";
+    } else {
+      deductions.forEach(d => {
+        const entry = document.createElement('div');
+        entry.className = 'entry';
+        entry.innerHTML = `<strong>${d.time}</strong> – ${d.reason} 
+          <br>Deduction: ${d.deduction}, Remaining Score: ${d.remaining}`;
+        logDiv.appendChild(entry);
+      });
+    }
+  </script>
+</body>
+</html>

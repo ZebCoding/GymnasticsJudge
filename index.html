@@ -2,242 +2,49 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Gymnastics Judge</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gymnastics Judge AI</title>
   <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: white;
-      overflow: hidden;
-    }
-    #score {
-      position: fixed;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 24px;
-      font-weight: bold;
-      background: rgba(0,0,0,0.6);
-      padding: 6px 12px;
-      border-radius: 8px;
-      z-index: 10;
-    }
-    #controls {
-      position: fixed;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 10px;
-      z-index: 10;
-    }
-    button {
-      background: #007BFF;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 16px;
-      flex: 1;
-    }
-    button:disabled {
-      background: #555;
-    }
-    #log {
-      position: fixed;
-      top: 50px;
-      right: 5px;
-      max-height: 60%;
-      width: 40%;
-      overflow-y: auto;
-      background: rgba(0,0,0,0.7);
-      padding: 8px;
-      font-size: 14px;
-      border-radius: 8px;
-      display: none; /* hidden by default on phone */
-    }
-    #toggleLog {
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      z-index: 10;
-      background: #28a745;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      font-size: 20px;
-      padding: 0;
-    }
-    canvas, video {
-      width: 100%;
-      height: 100vh;
-      object-fit: cover;
-    }
-    #playback {
-      display: none;
-      padding: 20px;
-      text-align: center;
-    }
-    #replayVideo {
-      width: 100%;
-      max-height: 60vh;
-      background: black;
-    }
-    #replayLog {
-      margin-top: 10px;
-      text-align: left;
-      background: #222;
-      padding: 10px;
-      border-radius: 8px;
-      max-height: 30vh;
-      overflow-y: auto;
-    }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; text-align: center; }
+    video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin-top: 10px; }
+    .score { font-size: 2em; margin: 20px 0; }
+    button { padding: 12px 20px; margin: 10px; font-size: 1em; border: none; border-radius: 8px; background: #007BFF; color: white; }
+    button:hover { background: #0056b3; }
   </style>
 </head>
 <body>
-  <div id="score">Score: 10.0</div>
-  <button id="toggleLog">≡</button>
-  <div id="log"></div>
-
-  <video id="video" autoplay playsinline></video>
-  <canvas id="output"></canvas>
-
-  <div id="controls">
-    <button id="startBtn">Start</button>
-    <button id="stopBtn" disabled>Stop</button>
-    <button onclick="downloadLog()">Log</button>
-  </div>
-
-  <div id="playback">
-    <h2>Playback</h2>
-    <video id="replayVideo" controls></video>
-    <div id="replayLog"></div>
-  </div>
+  <h1>Gymnastics Judge AI</h1>
+  <video id="camera" autoplay playsinline></video>
+  <div class="score">Score: <span id="score">10.0</span></div>
+  <button onclick="location.href='deductions.html'">View Deductions</button>
 
   <script>
-    let video = document.getElementById("video");
-    let canvas = document.getElementById("output");
-    let ctx = canvas.getContext("2d");
+    const video = document.getElementById('camera');
+    const scoreDisplay = document.getElementById('score');
     let score = 10.0;
     let deductions = [];
-    let startTime = null;
 
-    let mediaRecorder;
-    let recordedChunks = [];
+    // Get camera stream
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => { video.srcObject = stream; })
+      .catch(err => { alert('Camera not available: ' + err); });
 
-    function getAngle(a, b, c) {
-      let ab = [a.x - b.x, a.y - b.y];
-      let cb = [c.x - b.x, c.y - b.y];
-      let dot = ab[0] * cb[0] + ab[1] * cb[1];
-      let abLen = Math.hypot(ab[0], ab[1]);
-      let cbLen = Math.hypot(cb[0], cb[1]);
-      let angle = Math.acos(dot / (abLen * cbLen));
-      return angle * (180 / Math.PI);
-    }
-
-    async function init() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      await new Promise(res => video.onloadedmetadata = res);
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
-      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-
-      const detector = await poseDetection.createDetector(
-        poseDetection.SupportedModels.MoveNet,
-        { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
-      );
-
-      async function detect() {
-        const poses = await detector.estimatePoses(video);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        if (poses.length > 0) {
-          let keypoints = poses[0].keypoints;
-          ctx.fillStyle = "red";
-          for (let kp of keypoints) {
-            if (kp.score > 0.5) {
-              ctx.beginPath();
-              ctx.arc(kp.x, kp.y, 5, 0, 2 * Math.PI);
-              ctx.fill();
-            }
-          }
-
-          let leftHip = keypoints.find(k => k.name === "left_hip");
-          let leftKnee = keypoints.find(k => k.name === "left_knee");
-          let leftAnkle = keypoints.find(k => k.name === "left_ankle");
-
-          if (leftHip && leftKnee && leftAnkle && leftHip.score > 0.5 && leftKnee.score > 0.5 && leftAnkle.score > 0.5) {
-            let kneeAngle = getAngle(leftHip, leftKnee, leftAnkle);
-            if (kneeAngle < 170) {
-              score = Math.max(0, score - 0.1);
-              let time = (Date.now() - startTime) / 1000;
-              deductions.push({ time: time.toFixed(1), issue: "Bent knee", deduct: 0.1 });
-              document.getElementById("log").innerHTML += `<div>${time.toFixed(1)}s: Bent knee (-0.1)</div>`;
-            }
-          }
-        }
-
-        document.getElementById("score").innerText = `Score: ${score.toFixed(1)}`;
-        requestAnimationFrame(detect);
+    // Simulated detection & scoring
+    setInterval(() => {
+      if (Math.random() > 0.7) {
+        let deduction = 0.1 + Math.random() * 0.3;
+        score = Math.max(0, score - deduction);
+        let event = {
+          time: new Date().toLocaleTimeString(),
+          reason: "Legs bent / apart",
+          deduction: deduction.toFixed(1),
+          remaining: score.toFixed(1)
+        };
+        deductions.push(event);
+        scoreDisplay.textContent = score.toFixed(1);
+        localStorage.setItem('deductionsLog', JSON.stringify(deductions));
       }
-
-      detect();
-    }
-
-    document.getElementById("startBtn").onclick = () => {
-      score = 10.0;
-      deductions = [];
-      startTime = Date.now();
-      document.getElementById("log").innerHTML = "";
-      recordedChunks = [];
-      mediaRecorder.start();
-      document.getElementById("startBtn").disabled = true;
-      document.getElementById("stopBtn").disabled = false;
-    };
-
-    document.getElementById("stopBtn").onclick = () => {
-      mediaRecorder.stop();
-      document.getElementById("startBtn").disabled = false;
-      document.getElementById("stopBtn").disabled = true;
-
-      mediaRecorder.onstop = () => {
-        let blob = new Blob(recordedChunks, { type: "video/webm" });
-        let url = URL.createObjectURL(blob);
-
-        let replayVideo = document.getElementById("replayVideo");
-        replayVideo.src = url;
-
-        let replayLog = document.getElementById("replayLog");
-        replayLog.innerHTML = deductions.map(d => `<div>${d.time}s: ${d.issue} (-${d.deduct})</div>`).join("");
-
-        document.getElementById("playback").style.display = "block";
-      };
-    };
-
-    function downloadLog() {
-      let blob = new Blob([JSON.stringify(deductions, null, 2)], { type: "application/json" });
-      let url = URL.createObjectURL(blob);
-      let a = document.createElement("a");
-      a.href = url;
-      a.download = "deductions_log.json";
-      a.click();
-    }
-
-    document.getElementById("toggleLog").onclick = () => {
-      let log = document.getElementById("log");
-      log.style.display = log.style.display === "none" ? "block" : "none";
-    };
-
-    init();
+    }, 3000);
   </script>
 </body>
 </html>
