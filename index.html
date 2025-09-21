@@ -554,18 +554,18 @@
       const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
       const kneeThreshold = 160; // More sensitive - was 170
 
-      // Debug measurements every 60 frames (~1 second at 60fps)
+      // Body width measurements
+      const hipDistance = distance(leftHip, rightHip);
+      const ankleDist = distance(leftAnkle, rightAnkle);
+      const kneeDist = distance(leftKnee, rightKnee);
+
+      // Debug measurements every 60 frames (~1 second at 60fps) - AFTER variables declared
       if (Math.random() < 0.016) {
         console.log(`Measurements - Knee angles L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
         console.log(`Distances - Hips:${hipDistance.toFixed(3)} Ankles:${ankleDist.toFixed(3)} Knees:${kneeDist.toFixed(3)}`);
         console.log(`Ratios - Ankle/Hip:${(ankleDist/hipDistance).toFixed(2)} Knee/Hip:${(kneeDist/hipDistance).toFixed(2)}`);
         console.log(`Cooldowns - Left leg: ${((performance.now() - (lastDeductionAt['Left leg bent'] || 0))/1000).toFixed(1)}s ago, Right leg: ${((performance.now() - (lastDeductionAt['Right leg bent'] || 0))/1000).toFixed(1)}s ago`);
       }
-
-      // Body width measurements
-      const hipDistance = distance(leftHip, rightHip);
-      const ankleDist = distance(leftAnkle, rightAnkle);
-      const kneeDist = distance(leftKnee, rightKnee);
       
       // More sensitive legs apart detection - multiple methods
       const maxAnkleDistFactor = 1.3; // was 1.5 - more strict
