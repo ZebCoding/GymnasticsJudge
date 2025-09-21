@@ -22,6 +22,7 @@
   <video id="camera" autoplay playsinline></video>
   <canvas id="snapshot"></canvas>
   <div class="score">Score: <span id="score">10.0</span></div>
+  <div id="poseStatus" style="color: #888; font-size: 0.9em; margin: 10px 0;">Pose: Not detecting</div>
 
   <button id="startRoutine">Start Routine</button>
   <button id="endRoutine" disabled>End Routine</button>
@@ -33,6 +34,7 @@
     const canvas = document.getElementById('snapshot');
     const ctx = canvas.getContext('2d');
     const scoreDisplay = document.getElementById('score');
+    const poseStatus = document.getElementById('poseStatus');
 
     const startBtn = document.getElementById('startRoutine');
     const endBtn = document.getElementById('endRoutine');
@@ -81,7 +83,12 @@
     }
 
     function onResults(results) {
-      if (!results.poseLandmarks) return;
+      if (!results.poseLandmarks) {
+        console.log('No pose landmarks detected');
+        poseStatus.textContent = 'Pose: Not detected';
+        poseStatus.style.color = '#888';
+        return;
+      }
 
       const landmarks = results.poseLandmarks;
 
@@ -90,22 +97,66 @@
       const leftKnee = landmarks[25], rightKnee = landmarks[26];
       const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
 
+      // Check if all required landmarks are visible (confidence > 0.5)
+      const requiredLandmarks = [leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle];
+      if (requiredLandmarks.some(landmark => !landmark || landmark.visibility < 0.5)) {
+        console.log('Some required landmarks not visible or low confidence');
+        poseStatus.textContent = 'Pose: Low confidence';
+        poseStatus.style.color = '#ff9800';
+        return;
+      }
+
+      // Good pose detection
+      poseStatus.textContent = 'Pose: Tracking ✓';
+      poseStatus.style.color = '#4caf50';
+
       // Knee angles
       const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
       const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-      const kneeThreshold = 170;
+      const kneeThreshold = 160; // More sensitive - was 170
 
-      // Body width
+      // Debug measurements every 60 frames (~1 second at 60fps)
+      if (Math.random() < 0.016) {
+        console.log(`Measurements - Knee angles L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
+        console.log(`Distances - Hips:${hipDistance.toFixed(3)} Ankles:${ankleDist.toFixed(3)} Knees:${kneeDist.toFixed(3)}`);
+        console.log(`Ratios - Ankle/Hip:${(ankleDist/hipDistance).toFixed(2)} Knee/Hip:${(kneeDist/hipDistance).toFixed(2)}`);
+      }
+
+      // Body width measurements
       const hipDistance = distance(leftHip, rightHip);
-
-      // Ankle distance relative to hip distance
       const ankleDist = distance(leftAnkle, rightAnkle);
-      const maxDistFactor = 1.5; // allowed max = 1.5x hip distance
+      const kneeDist = distance(leftKnee, rightKnee);
+      
+      // More sensitive legs apart detection - multiple methods
+      const maxAnkleDistFactor = 1.3; // was 1.5 - more strict
+      const maxKneeDistFactor = 1.4;  // knee distance shouldn't exceed this either
+      
+      // Also check absolute distance (for very wide stances)
+      const maxAbsoluteAnkleDist = 0.3; // normalized coordinate distance
 
-      // Check deductions
-      if (leftKneeAngle < kneeThreshold) addDeduction("Left leg bent");
-      if (rightKneeAngle < kneeThreshold) addDeduction("Right leg bent");
-      if (ankleDist > hipDistance * maxDistFactor) addDeduction("Legs too far apart");
+      // Check deductions with debugging
+      if (leftKneeAngle < kneeThreshold) {
+        console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
+        addDeduction("Left leg bent");
+      }
+      if (rightKneeAngle < kneeThreshold) {
+        console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
+        addDeduction("Right leg bent");
+      }
+      // Multiple checks for legs too far apart
+      const ankleRatio = ankleDist / hipDistance;
+      const kneeRatio = kneeDist / hipDistance;
+      
+      if (ankleRatio > maxAnkleDistFactor) {
+        console.log(`Legs apart (ankle ratio): ${ankleRatio.toFixed(2)} > ${maxAnkleDistFactor}`);
+        addDeduction("Legs too far apart");
+      } else if (kneeRatio > maxKneeDistFactor) {
+        console.log(`Legs apart (knee ratio): ${kneeRatio.toFixed(2)} > ${maxKneeDistFactor}`);
+        addDeduction("Legs too far apart");
+      } else if (ankleDist > maxAbsoluteAnkleDist) {
+        console.log(`Legs apart (absolute): ${ankleDist.toFixed(3)} > ${maxAbsoluteAnkleDist}`);
+        addDeduction("Legs too far apart");
+      }
     }
 
     function addDeduction(reason) {
@@ -118,7 +169,7 @@
       }
       lastDeductionAt[reason] = now;
 
-      score = Math.max(0, score - 0.2);
+      score = Math.max(5.0, score - 0.2);
       console.log(`Deduction applied: "${reason}" - New score: ${score.toFixed(1)}`);
 
       // Snapshot
