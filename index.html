@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gymnastics Judge AI</title>
+  <title>Gymnastics Judge AI - Pommel Horse/Mushroom</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; text-align: center; background: #111; color: white; }
     video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin: 10px; }
@@ -22,7 +22,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 </head>
 <body>
-  <h1>Gymnastics Judge AI</h1>
+  <h1>Gymnastics Judge AI - Pommel Horse</h1>
   <div class="video-container">
     <div class="video-section">
       <h3>Camera Feed</h3>
@@ -303,22 +303,37 @@
       const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
       const hipY = (leftHip.y + rightHip.y) / 2;
       
-      // Much more strict bow detection to prevent false positives
-      const headBelowShoulders = nose.y > shoulderY + 0.08; // Must be significant drop
-      const verySignificantDrop = nose.y > shoulderY + 0.15; // Very obvious bow
-      const torsoCompressed = (shoulderY - hipY) < 0.12; // Much more compressed torso
+      // Extremely strict bow detection for pommel horse/mushroom routines
+      // Must distinguish between reaching down to equipment vs actual bowing
+      const headBelowShoulders = nose.y > shoulderY + 0.12; // Much more significant drop required
+      const verySignificantDrop = nose.y > shoulderY + 0.2; // Extreme bow only
+      const torsoCompressed = (shoulderY - hipY) < 0.1; // Very compressed torso (deep bow)
       
-      // Require MULTIPLE conditions to be met (AND logic, not OR)
-      const bowDetected = headBelowShoulders && torsoCompressed;
-      // OR a very significant head drop alone
-      const obviousBow = verySignificantDrop;
+      // Additional check: arms must be at sides (not reaching down)
+      const leftWrist = landmarks[15], rightWrist = landmarks[16];
+      let armsAtSides = true;
+      if (leftWrist && rightWrist) {
+        // Arms at sides = wrists near shoulder level or above, not reaching down
+        const leftArmReaching = leftWrist.y > leftShoulder.y + 0.1;
+        const rightArmReaching = rightWrist.y > rightShoulder.y + 0.1;
+        armsAtSides = !leftArmReaching && !rightArmReaching;
+      }
+      
+      // Require ALL conditions: head down AND torso compressed AND arms at sides
+      const bowDetected = headBelowShoulders && torsoCompressed && armsAtSides;
+      // OR extremely obvious bow (but still check arms aren't reaching)
+      const obviousBow = verySignificantDrop && armsAtSides;
       
       const finalBowDetection = bowDetected || obviousBow;
       
       // Debug bow detection occasionally
       if (Math.random() < 0.02) {
-        console.log(`Bow check - Nose:${nose.y.toFixed(3)} Shoulder:${shoulderY.toFixed(3)} Hip:${hipY.toFixed(3)}`);
+        console.log(`Pommel Horse Bow Check - Nose:${nose.y.toFixed(3)} Shoulder:${shoulderY.toFixed(3)} Hip:${hipY.toFixed(3)}`);
         console.log(`Head below shoulders: ${headBelowShoulders}, Very significant: ${verySignificantDrop}, Compressed: ${torsoCompressed}`);
+        console.log(`Arms at sides (not reaching): ${armsAtSides}`);
+        if (leftWrist && rightWrist) {
+          console.log(`Wrist positions - Left:${leftWrist.y.toFixed(3)} Right:${rightWrist.y.toFixed(3)}`);
+        }
         console.log(`Final bow detection: ${finalBowDetection}`);
       }
       
