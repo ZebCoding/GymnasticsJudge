@@ -103,21 +103,27 @@
     }
     
     function detectSalute(landmarks) {
-      // Check if one arm is raised (gymnastics salute - single arm up)
+      // One-arm salute detection with visibility + multiple cues
+      const nose = landmarks[0];
       const leftShoulder = landmarks[11], rightShoulder = landmarks[12];
+      const leftElbow = landmarks[13], rightElbow = landmarks[14];
       const leftWrist = landmarks[15], rightWrist = landmarks[16];
       
-      if (!leftShoulder || !rightShoulder || !leftWrist || !rightWrist) return false;
+      if (!nose || !leftShoulder || !rightShoulder || !leftElbow || !rightElbow || !leftWrist || !rightWrist) return false;
       
-      // One arm raised if either wrist is significantly above its shoulder
-      const leftArmRaised = leftWrist.y < leftShoulder.y - 0.15;
-      const rightArmRaised = rightWrist.y < rightShoulder.y - 0.15;
+      // Helper to validate landmark confidence
+      const visOK = (lm) => lm.visibility === undefined || lm.visibility >= 0.5;
+      if (![nose, leftShoulder, rightShoulder, leftElbow, rightElbow, leftWrist, rightWrist].every(visOK)) {
+        return false;
+      }
       
-      // Salute = one arm up, other arm down (or at least not raised)
-      const leftArmDown = leftWrist.y > leftShoulder.y - 0.05;
-      const rightArmDown = rightWrist.y > rightShoulder.y - 0.05;
+      // Consider an arm raised if wrist and elbow are above shoulder (y smaller = higher)
+      // and optionally wrist near head level to be robust to different body sizes
+      const leftRaised = (leftWrist.y < leftShoulder.y - 0.08 && leftElbow.y < leftShoulder.y - 0.04) || (leftWrist.y < (nose.y + 0.05));
+      const rightRaised = (rightWrist.y < rightShoulder.y - 0.08 && rightElbow.y < rightShoulder.y - 0.04) || (rightWrist.y < (nose.y + 0.05));
       
-      return (leftArmRaised && rightArmDown) || (rightArmRaised && leftArmDown);
+      // Accept salute when at least one arm is raised
+      return leftRaised || rightRaised;
     }
     
     function detectBow(landmarks) {
@@ -199,9 +205,16 @@
       
       // Gesture detection for auto start/stop
       if (waitingForSalute && !routineStarted) {
+        // Debug wrist/shoulder positions occasionally
+        if (Math.random() < 0.05) {
+          const ls = landmarks[11], rs = landmarks[12], lw = landmarks[15], rw = landmarks[16];
+          console.log(`Salute debug - LW:${lw?.y?.toFixed(3)} LS:${ls?.y?.toFixed(3)} RW:${rw?.y?.toFixed(3)} RS:${rs?.y?.toFixed(3)}`);
+        }
         const isSaluting = detectSalute(landmarks);
         if (isSaluting) {
           gestureHoldFrames++;
+          poseStatus.textContent = `Salute detected… ${Math.round(100 * gestureHoldFrames / GESTURE_HOLD_REQUIRED)}%`;
+          poseStatus.style.color = '#4caf50';
           console.log(`Salute detected, holding for ${gestureHoldFrames}/${GESTURE_HOLD_REQUIRED} frames`);
           if (gestureHoldFrames >= GESTURE_HOLD_REQUIRED) {
             console.log('Salute confirmed - starting routine!');
@@ -209,6 +222,8 @@
           }
         } else {
           gestureHoldFrames = 0;
+          poseStatus.textContent = 'Ready - Waiting for Salute (raise one arm)';
+          poseStatus.style.color = '#ff9800';
         }
       } else if (waitingForBow && routineStarted) {
         const isBowing = detectBow(landmarks);
