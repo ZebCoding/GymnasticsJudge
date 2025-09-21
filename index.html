@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gymnastics Judge with Replay</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+  <style>
+    body { margin: 0; text-align: center; background: #111; color: white; }
+    canvas { position: absolute; top: 0; left: 0; }
+    video { display: none; }
+    #controls { margin: 20px; }
+    #score { font-size: 24px; margin: 10px; }
+    #log { max-height: 200px; overflow-y: auto; border: 1px solid #444; padding: 10px; margin: 10px; background: #222; text-align: left; }
+    #playback { display: none; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>🤸 Gymnastics Judge (Prototype)</h1>
+
+  <div id="controls">
+    <button id="startBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+    <button onclick="downloadLog()">Download Deductions Log</button>
+  </div>
+
+  <div id="score">Score: 10.0</div>
+  <div id="log"></div>
+
+  <video id="video" autoplay playsinline></video>
+  <canvas id="output"></canvas>
+
+  <div id="playback">
+    <h2>Playback</h2>
+    <video id="replayVideo" controls></video>
+    <div id="replayLog"></div>
+  </div>
+
+  <script>
+    let video = document.getElementById("video");
+    let canvas = document.getElementById("output");
+    let ctx = canvas.getContext("2d");
+    let score = 10.0;
+    let deductions = [];
+    let startTime = null;
+
+    let mediaRecorder;
+    let recordedChunks = [];
+
+    function getAngle(a, b, c) {
+      let ab = [a.x - b.x, a.y - b.y];
+      let cb = [c.x - b.x, c.y - b.y];
+      let dot = ab[0] * cb[0] + ab[1] * cb[1];
+      let abLen = Math.hypot(ab[0], ab[1]);
+      let cbLen = Math.hypot(cb[0], cb[1]);
+      let angle = Math.acos(dot / (abLen * cbLen));
+      return angle * (180 / Math.PI);
+    }
+
+    async function init() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      await new Promise(res => video.onloadedmetadata = res);
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // Recorder for video
+      mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+
+      const detector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+      );
+
+      async function detect() {
+        const poses = await detector.estimatePoses(video);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        if (poses.length > 0) {
+          let keypoints = poses[0].keypoints;
+          ctx.fillStyle = "red";
+          for (let kp of keypoints) {
+            if (kp.score > 0.5) {
+              ctx.beginPath();
+              ctx.arc(kp.x, kp.y, 5, 0, 2 * Math.PI);
+              ctx.fill();
+            }
+          }
+
+          // Example deduction rule: knee bend
+          let leftHip = keypoints.find(k => k.name === "left_hip");
+          let leftKnee = keypoints.find(k => k.name === "left_knee");
+          let leftAnkle = keypoints.find(k => k.name === "left_ankle");
+
+          if (leftHip && leftKnee && leftAnkle && leftHip.score > 0.5 && leftKnee.score > 0.5 && leftAnkle.score > 0.5) {
+            let kneeAngle = getAngle(leftHip, leftKnee, leftAnkle);
+            if (kneeAngle < 170) {
+              score = Math.max(0, score - 0.1);
+              let time = (Date.now() - startTime) / 1000;
+              deductions.push({ time: time.toFixed(1), issue: "Bent knee", deduct: 0.1 });
+              document.getElementById("log").innerHTML += `<div>${time.toFixed(1)}s: Bent knee (-0.1)</div>`;
+            }
+          }
+        }
+
+        document.getElementById("score").innerText = `Score: ${score.toFixed(1)}`;
+        requestAnimationFrame(detect);
+      }
+
+      detect();
+    }
+
+    document.getElementById("startBtn").onclick = () => {
+      score = 10.0;
+      deductions = [];
+      startTime = Date.now();
+      document.getElementById("log").innerHTML = "";
+      recordedChunks = [];
+      mediaRecorder.start();
+      document.getElementById("startBtn").disabled = true;
+      document.getElementById("stopBtn").disabled = false;
+    };
+
+    document.getElementById("stopBtn").onclick = () => {
+      mediaRecorder.stop();
+      document.getElementById("startBtn").disabled = false;
+      document.getElementById("stopBtn").disabled = true;
+
+      mediaRecorder.onstop = () => {
+        let blob = new Blob(recordedChunks, { type: "video/webm" });
+        let url = URL.createObjectURL(blob);
+
+        let replayVideo = document.getElementById("replayVideo");
+        replayVideo.src = url;
+
+        // Show deductions synced
+        let replayLog = document.getElementById("replayLog");
+        replayLog.innerHTML = deductions.map(d => `<div>${d.time}s: ${d.issue} (-${d.deduct})</div>`).join("");
+
+        document.getElementById("playback").style.display = "block";
+      };
+    };
+
+    function downloadLog() {
+      let blob = new Blob([JSON.stringify(deductions, null, 2)], { type: "application/json" });
+      let url = URL.createObjectURL(blob);
+      let a = document.createElement("a");
+      a.href = url;
+      a.download = "deductions_log.json";
+      a.click();
+    }
+
+    init();
+  </script>
+</body>
+</html>
