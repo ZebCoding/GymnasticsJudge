@@ -45,6 +45,10 @@
     let recordedChunks = [];
     let routineStarted = false;
 
+    // Control repeated deductions: per-reason cooldown in milliseconds
+    const DEDUCTION_COOLDOWN_MS = 1500;
+    let lastDeductionAt = {}; // reason -> timestamp (performance.now())
+
     // Get camera
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => { mediaStream = stream; video.srcObject = stream; })
@@ -105,10 +109,17 @@
     }
 
     function addDeduction(reason) {
-      const last = deductions[deductions.length-1];
-      if (last && last.reason === reason) return; // avoid duplicates per frame
+      // Allow repeated deductions for the same reason after a short cooldown
+      const now = performance.now();
+      const lastTime = lastDeductionAt[reason] || 0;
+      if (now - lastTime < DEDUCTION_COOLDOWN_MS) {
+        console.log(`Deduction "${reason}" blocked by cooldown (${((now - lastTime)/1000).toFixed(1)}s ago)`);
+        return;
+      }
+      lastDeductionAt[reason] = now;
 
       score = Math.max(0, score - 0.2);
+      console.log(`Deduction applied: "${reason}" - New score: ${score.toFixed(1)}`);
 
       // Snapshot
       canvas.width = video.videoWidth;
@@ -139,6 +150,7 @@
       // Reset score & log
       score = 10.0;
       deductions = [];
+      lastDeductionAt = {};
       scoreDisplay.textContent = score.toFixed(1);
       localStorage.removeItem('deductionsLog');
 
