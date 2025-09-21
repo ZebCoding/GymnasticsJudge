@@ -100,9 +100,14 @@
     let waitingForSalute = false;
     let waitingForBow = false;
     let gestureHoldFrames = 0;
-    const GESTURE_HOLD_REQUIRED = 30; // ~0.5 seconds at 60fps
+    const GESTURE_HOLD_REQUIRED = 30; // ~0.5 seconds at 60fps (only for bow)
     const SALUTE_ARM_ANGLE_THRESHOLD = 45; // arms up angle
     const BOW_TORSO_ANGLE_THRESHOLD = 30; // forward lean angle
+    
+    // Salute sequence detection
+    let saluteDetected = false;
+    let waitingForArmsDown = false;
+    const ARMS_DOWN_FRAMES_REQUIRED = 10; // ~0.16 seconds to confirm arms down
 
     // Get camera and start pose detection immediately
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -180,6 +185,27 @@
       
       // Accept salute when at least one arm is raised
       return leftRaised || rightRaised;
+    }
+    
+    function detectArmsDown(landmarks) {
+      // Check if both arms are down (at sides)
+      const leftShoulder = landmarks[11], rightShoulder = landmarks[12];
+      const leftElbow = landmarks[13], rightElbow = landmarks[14];
+      const leftWrist = landmarks[15], rightWrist = landmarks[16];
+      
+      if (!leftShoulder || !rightShoulder || !leftElbow || !rightElbow || !leftWrist || !rightWrist) return false;
+      
+      // Helper to validate landmark confidence
+      const visOK = (lm) => lm.visibility === undefined || lm.visibility >= 0.5;
+      if (![leftShoulder, rightShoulder, leftElbow, rightElbow, leftWrist, rightWrist].every(visOK)) {
+        return false;
+      }
+      
+      // Arms are down if both wrists are at or below shoulder level
+      const leftArmDown = leftWrist.y >= leftShoulder.y - 0.05;
+      const rightArmDown = rightWrist.y >= rightShoulder.y - 0.05;
+      
+      return leftArmDown && rightArmDown;
     }
     
     function drawPoseSkeleton(landmarks) {
@@ -361,12 +387,20 @@
             debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
           }
           lastSuccessfulPose = now; // Reset timer
+          consecutiveFailures = 0; // Reset failure counter
         } else {
-          poseStatus.textContent = 'Pose: Not detected - check lighting';
-          poseStatus.style.color = '#888';
+          // Don't immediately change status - give pose detection more time
+          if (consecutiveFailures < 5) {
+            poseStatus.textContent = 'Pose: Searching...';
+            poseStatus.style.color = '#ffc107';
+          } else {
+            poseStatus.textContent = 'Pose: Not detected - check lighting';
+            poseStatus.style.color = '#888';
+          }
         }
         
-        if (showDebug) {
+        // Only clear skeleton after several failures to keep it visible longer
+        if (showDebug && consecutiveFailures > 10) {
           debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
         }
         return;
@@ -406,25 +440,33 @@
       
       // Gesture detection for auto start/stop
       if (routineState === ROUTINE_STATES.SETUP && waitingForSalute) {
-        // Debug wrist/shoulder positions occasionally
-        if (Math.random() < 0.05) {
-          const ls = landmarks[11], rs = landmarks[12], lw = landmarks[15], rw = landmarks[16];
-          console.log(`Salute debug - LW:${lw?.y?.toFixed(3)} LS:${ls?.y?.toFixed(3)} RW:${rw?.y?.toFixed(3)} RS:${rs?.y?.toFixed(3)}`);
-        }
-        const isSaluting = detectSalute(landmarks);
-        if (isSaluting) {
-          gestureHoldFrames++;
-          poseStatus.textContent = `Salute detected… ${Math.round(100 * gestureHoldFrames / GESTURE_HOLD_REQUIRED)}%`;
-          poseStatus.style.color = '#4caf50';
-          console.log(`Salute detected, holding for ${gestureHoldFrames}/${GESTURE_HOLD_REQUIRED} frames`);
-          if (gestureHoldFrames >= GESTURE_HOLD_REQUIRED) {
-            console.log('Salute confirmed - starting routine!');
-            startRoutineAutomatically();
+        if (!saluteDetected) {
+          // Step 1: Look for salute
+          const isSaluting = detectSalute(landmarks);
+          if (isSaluting) {
+            saluteDetected = true;
+            waitingForArmsDown = true;
+            poseStatus.textContent = 'Salute detected - lower arms to start';
+            poseStatus.style.color = '#4caf50';
+            console.log('Salute detected! Now waiting for arms down...');
+          } else {
+            poseStatus.textContent = 'Ready - Waiting for Salute (raise one arm)';
+            poseStatus.style.color = '#ff9800';
           }
-        } else {
-          gestureHoldFrames = 0;
-          poseStatus.textContent = 'Ready - Waiting for Salute (raise one arm)';
-          poseStatus.style.color = '#ff9800';
+        } else if (waitingForArmsDown) {
+          // Step 2: Look for arms down
+          const armsDown = detectArmsDown(landmarks);
+          if (armsDown) {
+            gestureHoldFrames++;
+            poseStatus.textContent = `Arms down detected... ${Math.round(100 * gestureHoldFrames / ARMS_DOWN_FRAMES_REQUIRED)}%`;
+            if (gestureHoldFrames >= ARMS_DOWN_FRAMES_REQUIRED) {
+              console.log('Complete salute sequence confirmed - starting routine!');
+              startRoutineAutomatically();
+            }
+          } else {
+            gestureHoldFrames = 0;
+            poseStatus.textContent = 'Salute detected - lower arms to start';
+          }
         }
       } else if (routineState === ROUTINE_STATES.ACTIVE && waitingForBow) {
         const isBowing = detectBow(landmarks);
@@ -607,6 +649,10 @@
       waitingForSalute = true;
       waitingForBow = false;
       gestureHoldFrames = 0;
+      
+      // Reset salute sequence detection
+      saluteDetected = false;
+      waitingForArmsDown = false;
       
       console.log('Routine state: WAITING → SETUP (waiting for salute, no deductions)');
       
