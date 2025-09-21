@@ -282,22 +282,39 @@
     }
     
     function detectBow(landmarks) {
-      // Check if person is bowing (head lower than shoulders, torso leaning forward)
+      // More sensitive bow detection
       const nose = landmarks[0];
       const leftShoulder = landmarks[11], rightShoulder = landmarks[12];
       const leftHip = landmarks[23], rightHip = landmarks[24];
+      const leftKnee = landmarks[25], rightKnee = landmarks[26];
       
       if (!nose || !leftShoulder || !rightShoulder || !leftHip || !rightHip) return false;
       
-      // Calculate average shoulder and hip positions
+      // Helper to validate landmark confidence
+      const visOK = (lm) => lm.visibility === undefined || lm.visibility >= 0.4;
+      if (![nose, leftShoulder, rightShoulder, leftHip, rightHip].every(visOK)) {
+        return false;
+      }
+      
+      // Calculate positions
       const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
       const hipY = (leftHip.y + rightHip.y) / 2;
       
-      // Bow detected if nose is below shoulder level and torso is leaning
-      const headLowered = nose.y > shoulderY + 0.05;
-      const torsoLeaning = shoulderY > hipY - 0.15; // shoulders closer to hips indicates forward lean
+      // More sensitive bow detection - multiple methods
+      const headBelowShoulders = nose.y > shoulderY + 0.02; // Reduced from 0.05
+      const significantHeadDrop = nose.y > shoulderY + 0.08; // Significant bow
+      const torsoCompressed = (shoulderY - hipY) < 0.15; // Shoulders closer to hips
       
-      return headLowered && torsoLeaning;
+      // Accept bow if any of these conditions met
+      const bowDetected = headBelowShoulders || significantHeadDrop || torsoCompressed;
+      
+      // Debug bow detection occasionally
+      if (Math.random() < 0.02) {
+        console.log(`Bow check - Nose:${nose.y.toFixed(3)} Shoulder:${shoulderY.toFixed(3)} Hip:${hipY.toFixed(3)}`);
+        console.log(`Head below shoulders: ${headBelowShoulders}, Significant drop: ${significantHeadDrop}, Compressed: ${torsoCompressed}`);
+      }
+      
+      return bowDetected;
     }
 
     // Setup MediaPipe Pose with error handling
@@ -457,6 +474,8 @@
         const isBowing = detectBow(landmarks);
         if (isBowing) {
           gestureHoldFrames++;
+          poseStatus.textContent = `Bow detected... ${Math.round(100 * gestureHoldFrames / GESTURE_HOLD_REQUIRED)}%`;
+          poseStatus.style.color = '#ff9800';
           console.log(`Bow detected, holding for ${gestureHoldFrames}/${GESTURE_HOLD_REQUIRED} frames`);
           if (gestureHoldFrames >= GESTURE_HOLD_REQUIRED) {
             console.log('Bow confirmed - ending routine!');
@@ -464,6 +483,10 @@
           }
         } else {
           gestureHoldFrames = 0;
+          if (routineState === ROUTINE_STATES.ACTIVE) {
+            poseStatus.textContent = 'Routine Active - Bow to finish';
+            poseStatus.style.color = '#ff9800';
+          }
         }
       }
 
@@ -536,9 +559,18 @@
         return;
       }
       lastDeductionAt[reason] = now;
+      
+      // Log current state before deduction
+      console.log(`BEFORE deduction - Current score: ${score.toFixed(1)}, Routine state: ${routineState}`);
 
+      // Apply deduction with proper minimum score of 5.0
       score = Math.max(5.0, score - 0.2);
-      console.log(`Deduction applied: "${reason}" - New score: ${score.toFixed(1)}`);
+      console.log(`Deduction applied: "${reason}" - New score: ${score.toFixed(1)}, min: 5.0`);
+      
+      // Double check we're not stopping too early
+      if (score > 5.0 && score < 8.0) {
+        console.log('Score in danger zone, verifying min score enforcement');
+      }
 
       // Snapshot
       canvas.width = video.videoWidth;
