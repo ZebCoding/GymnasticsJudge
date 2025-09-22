@@ -319,11 +319,11 @@
       const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
       const hipY = (leftHip.y + rightHip.y) / 2;
       
-      // Balanced bow detection for pommel horse/mushroom routines
+      // Very sensitive bow detection based on real user testing
       // Must distinguish between reaching down to equipment vs actual bowing
-      const headBelowShoulders = nose.y > shoulderY + 0.06; // Reasonable head drop (was 0.12)
-      const verySignificantDrop = nose.y > shoulderY + 0.12; // Obvious bow (was 0.2)
-      const torsoCompressed = (shoulderY - hipY) < 0.13; // Moderate compression (was 0.1)
+      const headBelowShoulders = nose.y > shoulderY + 0.02; // Very sensitive head drop (was 0.06)
+      const verySignificantDrop = nose.y > shoulderY + 0.05; // Moderate bow (was 0.12)
+      const torsoCompressed = (shoulderY - hipY) < 0.15; // More forgiving compression (was 0.13)
       
       // Additional check: arms must be at sides (not reaching down)
       const leftWrist = landmarks[15], rightWrist = landmarks[16];
@@ -345,9 +345,9 @@
       // Debug bow detection - show every time when routine is active and waiting for bow
       if (routineState === ROUTINE_STATES.ACTIVE && waitingForBow) {
         console.log(`🏹 BOW CHECK - Nose:${nose.y.toFixed(3)} Shoulder:${shoulderY.toFixed(3)} Hip:${hipY.toFixed(3)}`);
-        console.log(`Head below shoulders (${nose.y.toFixed(3)} > ${(shoulderY + 0.06).toFixed(3)}): ${headBelowShoulders}`);
-        console.log(`Very significant drop (${nose.y.toFixed(3)} > ${(shoulderY + 0.12).toFixed(3)}): ${verySignificantDrop}`);
-        console.log(`Torso compressed (${shoulderY.toFixed(3)} - ${hipY.toFixed(3)} = ${(shoulderY - hipY).toFixed(3)} < 0.13): ${torsoCompressed}`);
+        console.log(`Head below shoulders (${nose.y.toFixed(3)} > ${(shoulderY + 0.02).toFixed(3)}): ${headBelowShoulders}`);
+        console.log(`Very significant drop (${nose.y.toFixed(3)} > ${(shoulderY + 0.05).toFixed(3)}): ${verySignificantDrop}`);
+        console.log(`Torso compressed (${shoulderY.toFixed(3)} - ${hipY.toFixed(3)} = ${(shoulderY - hipY).toFixed(3)} < 0.15): ${torsoCompressed}`);
         console.log(`Arms at sides (not reaching): ${armsAtSides}`);
         if (leftWrist && rightWrist) {
           const leftReaching = leftWrist.y > leftShoulder.y + 0.1;
