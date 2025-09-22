@@ -330,6 +330,10 @@
             console.log('▶️ Video can start playing');
           });
           
+          video.addEventListener('playing', () => {
+            console.log('🎥 Video is actively playing - pose detection should start soon');
+          });
+          
           return; // Success - exit the loop
           
         } catch (err) {
@@ -511,6 +515,15 @@
     async function detectPose() {
       const now = performance.now();
       
+      // Log that pose detection is running every 5 seconds
+      if (Math.random() < 0.001) {
+        console.log('🔄 Pose detection loop is running...', {
+          videoReady: video.readyState >= 2,
+          videoPlaying: !video.paused && !video.ended,
+          videoDimensions: `${video.videoWidth}x${video.videoHeight}`
+        });
+      }
+      
       // Frame rate limiting to prevent freezing
       if (now - lastFrameTime < FRAME_INTERVAL) {
         requestAnimationFrame(detectPose);
@@ -608,8 +621,8 @@
       poseStatus.textContent = `Pose: Tracking ✓ (${landmarks.length} points)`;
       poseStatus.style.color = '#4caf50';
       
-      // Debug pose detection occasionally
-      if (Math.random() < 0.01) {
+      // Debug pose detection more frequently when not in routine
+      if (Math.random() < 0.02 || routineState === ROUTINE_STATES.SETUP) {
         console.log(`📍 POSE DEBUG - ${landmarks.length} landmarks detected, routine state: ${routineState}, waiting for salute: ${waitingForSalute}`);
       }
       
