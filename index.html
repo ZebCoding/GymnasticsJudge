@@ -275,25 +275,49 @@
     const SALUTE_CONFIRM_FRAMES = 5; // ~0.08 seconds to confirm salute
 
     // Get camera and start pose detection immediately
-    navigator.mediaDevices.getUserMedia({ video: true })
+    console.log('🎥 Requesting camera access...');
+    navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: 'user'
+      } 
+    })
       .then(stream => { 
+        console.log('✅ Camera stream obtained');
         mediaStream = stream; 
         video.srcObject = stream;
-        console.log('Camera stream obtained');
+        
+        // Force video to play
+        video.play().then(() => {
+          console.log('📹 Video playing successfully');
+        }).catch(err => {
+          console.error('❌ Video play error:', err);
+        });
         
         // Start pose detection when video is ready
         video.addEventListener('loadeddata', () => {
-          console.log('Video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
+          console.log('📊 Video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
           // Wait a moment for video to stabilize
           setTimeout(() => {
-            console.log('Starting pose detection...');
+            console.log('🤖 Starting pose detection...');
             detectPose();
           }, 1000);
         });
+        
+        // Additional event listeners for debugging
+        video.addEventListener('loadedmetadata', () => {
+          console.log('📝 Video metadata loaded');
+        });
+        
+        video.addEventListener('canplay', () => {
+          console.log('▶️ Video can start playing');
+        });
+        
       })
       .catch(err => { 
-        console.error('Camera error:', err);
-        alert('Camera not available: ' + err); 
+        console.error('❌ Camera error:', err);
+        alert('Camera not available: ' + err.message); 
       });
 
     // Utility functions
