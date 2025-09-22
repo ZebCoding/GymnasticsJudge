@@ -311,15 +311,29 @@
             console.error('❌ Video play error:', playErr);
           }
           
-          // Start pose detection when video is ready
+          // Multiple ways to start pose detection
           video.addEventListener('loadeddata', () => {
             console.log('📊 Video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
-            // Wait a moment for video to stabilize
             setTimeout(() => {
-              console.log('🤖 Starting pose detection...');
+              console.log('🤖 Starting pose detection from loadeddata...');
               detectPose();
             }, 1000);
           });
+          
+          // Backup timer to start pose detection
+          setTimeout(() => {
+            console.log('⏰ Backup timer: Force starting pose detection...');
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+              console.log('📊 Video dimensions from backup:', video.videoWidth, 'x', video.videoHeight);
+              detectPose();
+            } else {
+              console.log('⚠️ Video not ready yet, trying again in 2s...');
+              setTimeout(() => {
+                console.log('⏰ Final attempt to start pose detection...');
+                detectPose();
+              }, 2000);
+            }
+          }, 3000);
           
           // Additional event listeners for debugging
           video.addEventListener('loadedmetadata', () => {
