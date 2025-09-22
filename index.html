@@ -565,12 +565,33 @@
       }
 
       // Good pose detection
-      poseStatus.textContent = 'Pose: Tracking ✓';
+      poseStatus.textContent = `Pose: Tracking ✓ (${landmarks.length} points)`;
       poseStatus.style.color = '#4caf50';
+      
+      // Debug pose detection occasionally
+      if (Math.random() < 0.01) {
+        console.log(`📍 POSE DEBUG - ${landmarks.length} landmarks detected, routine state: ${routineState}, waiting for salute: ${waitingForSalute}`);
+      }
       
       // Gesture detection for auto start/stop
       if (routineState === ROUTINE_STATES.SETUP && waitingForSalute) {
         const isSaluting = detectSalute(landmarks);
+        
+        // Debug salute detection every 30 frames
+        if (Math.random() < 0.033) {
+          console.log('🔍 SALUTE DEBUG - Checking landmarks...');
+          const nose = landmarks[0];
+          const leftShoulder = landmarks[11], rightShoulder = landmarks[12];
+          const leftWrist = landmarks[15], rightWrist = landmarks[16];
+          if (leftWrist && rightWrist && leftShoulder && rightShoulder) {
+            console.log(`Left wrist Y: ${leftWrist.y.toFixed(3)}, Left shoulder Y: ${leftShoulder.y.toFixed(3)}, Raised: ${leftWrist.y < leftShoulder.y - 0.08}`);
+            console.log(`Right wrist Y: ${rightWrist.y.toFixed(3)}, Right shoulder Y: ${rightShoulder.y.toFixed(3)}, Raised: ${rightWrist.y < rightShoulder.y - 0.08}`);
+            console.log(`Salute detected: ${isSaluting}`);
+          } else {
+            console.log('Missing key landmarks for salute detection');
+          }
+        }
+        
         if (isSaluting) {
           gestureHoldFrames++;
           poseStatus.textContent = `Salute detected... ${Math.round(100 * gestureHoldFrames / SALUTE_CONFIRM_FRAMES)}%`;
@@ -585,7 +606,7 @@
           poseStatus.textContent = 'Ready - Waiting for Salute (raise one arm)';
           poseStatus.style.color = '#ff9800';
         }
-      } else if (routineState === ROUTINE_STATES.ACTIVE && waitingForBow) {
+      }
         const isBowing = detectBow(landmarks);
         if (isBowing) {
           console.log('Bow detected immediately - ending routine!');
