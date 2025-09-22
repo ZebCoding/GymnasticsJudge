@@ -5,37 +5,173 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gymnastics Judge AI - Pommel Horse/Mushroom</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; text-align: center; background: #111; color: white; min-height: 100vh; }
-    video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin: 5px; }
-    canvas { display: none; }
-    .video-container { display: flex; justify-content: center; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
-    .video-section { text-align: center; flex: 1; min-width: 280px; max-width: 500px; }
-    .video-section h3 { margin: 5px 0; color: white; font-size: 1.1em; }
-    .score { font-size: 2.5em; margin: 15px 0; font-weight: bold; color: #00ff00; }
-    #poseStatus { font-size: 0.9em; margin: 10px 0; padding: 5px; }
-    button { padding: 12px 20px; margin: 8px 5px; font-size: 1em; border: none; border-radius: 8px; background: #007BFF; color: white; min-width: 120px; }
-    button:hover { background: #0056b3; }
-    button:disabled { background: #555; }
-    #replayStatus { font-size: 1em; margin: 10px 0; font-weight: bold; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #000; color: white; overflow: hidden; }
     
-    /* Mobile optimizations */
-    @media (max-width: 768px) {
-      body { padding: 5px; }
-      .score { font-size: 2em; margin: 10px 0; }
-      .video-container { flex-direction: column; align-items: center; }
-      .video-section { width: 100%; max-width: 100%; }
-      video, #replayVideo { max-width: 100%; width: 95%; }
-      button { padding: 15px 25px; margin: 10px 5px; font-size: 1.1em; min-width: 140px; }
-      .video-section h3 { font-size: 1.2em; margin: 8px 0; }
-      #poseStatus { font-size: 1em; padding: 8px; margin: 8px 0; }
-      #replayStatus { font-size: 1.1em; margin: 12px 0; }
+    /* Fullscreen video container */
+    .video-fullscreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
     }
     
-    /* Very small screens */
+    #camera, #replayVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border: none;
+    }
+    
+    /* Overlay UI elements */
+    .ui-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 15%, transparent 85%, rgba(0,0,0,0.7) 100%);
+    }
+    
+    /* Top bar with score and status */
+    .top-bar {
+      position: absolute;
+      top: 20px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+      pointer-events: none;
+    }
+    
+    .score {
+      font-size: 4em;
+      font-weight: bold;
+      color: #00ff00;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      margin: 0;
+    }
+    
+    .status-info {
+      text-align: right;
+      font-size: 1.2em;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    }
+    
+    #poseStatus {
+      margin: 0;
+      font-weight: bold;
+    }
+    
+    /* Bottom controls */
+    .bottom-controls {
+      position: absolute;
+      bottom: 30px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      pointer-events: all;
+    }
+    
+    button {
+      padding: 20px 30px;
+      margin: 0 10px;
+      font-size: 1.3em;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      background: rgba(0, 123, 255, 0.9);
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    
+    button:hover {
+      background: rgba(0, 86, 179, 0.95);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+    }
+    
+    button:disabled {
+      background: rgba(85, 85, 85, 0.7);
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    /* Replay status overlay */
+    .replay-status {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px 30px;
+      border-radius: 12px;
+      font-size: 1.5em;
+      font-weight: bold;
+      text-align: center;
+      pointer-events: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    }
+    
+    /* Hide replay section initially */
+    #replaySection {
+      display: none;
+      z-index: 5; /* Above camera feed but below UI overlay */
+    }
+    
+    /* Mobile adjustments */
+    @media (max-width: 768px) {
+      .score {
+        font-size: 3em;
+      }
+      
+      .status-info {
+        font-size: 1em;
+      }
+      
+      button {
+        padding: 18px 25px;
+        font-size: 1.2em;
+      }
+      
+      .top-bar {
+        padding: 0 15px;
+      }
+      
+      .replay-status {
+        font-size: 1.3em;
+        padding: 15px 25px;
+      }
+    }
+    
     @media (max-width: 480px) {
-      .score { font-size: 1.8em; }
-      button { padding: 12px 20px; font-size: 1em; min-width: 120px; }
-      .video-section h3 { font-size: 1em; }
+      .score {
+        font-size: 2.5em;
+      }
+      
+      .status-info {
+        font-size: 0.9em;
+      }
+      
+      button {
+        padding: 15px 20px;
+        font-size: 1.1em;
+        margin: 0 5px;
+      }
+      
+      .replay-status {
+        font-size: 1.1em;
+        padding: 12px 20px;
+      }
     }
   </style>
   <!-- Load MediaPipe Pose -->
@@ -43,27 +179,37 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 </head>
 <body>
-  <h1>Gymnastics Judge AI - Pommel Horse</h1>
-  <div class="video-container">
-    <div class="video-section">
-      <h3>Camera Feed</h3>
-      <video id="camera" autoplay playsinline></video>
-    </div>
+  <!-- Main camera video (fullscreen) -->
+  <div class="video-fullscreen">
+    <video id="camera" autoplay playsinline></video>
   </div>
   
-  <!-- Replay Video Section (hidden by default) -->
-  <div id="replaySection" class="video-container" style="display: none; margin-top: 20px;">
-    <div class="video-section">
-      <h3>Routine Replay - Pausing at Deductions</h3>
-      <video id="replayVideo" controls style="width: 100%; max-width: 640px; border: 2px solid #007BFF; border-radius: 12px;"></video>
-      <div id="replayStatus" style="color: #ff9800; margin: 10px 0; font-weight: bold;">Replay starting in 3 seconds...</div>
-      <button id="closeReplay" style="margin-top: 10px;">Close Replay & Ready for Next Routine</button>
+  <!-- Replay video (overlays camera when active) -->
+  <div id="replaySection" class="video-fullscreen">
+    <video id="replayVideo"></video>
+  </div>
+  
+  <!-- UI Overlay -->
+  <div class="ui-overlay">
+    <!-- Top bar with score and status -->
+    <div class="top-bar">
+      <div class="score">Score: <span id="score">10.0</span></div>
+      <div class="status-info">
+        <div id="poseStatus">Pose: Not detecting</div>
+      </div>
+    </div>
+    
+    <!-- Bottom controls -->
+    <div class="bottom-controls">
+      <button id="startRoutine">Ready for Routine</button>
+      <button id="closeReplay" style="display: none;">Close Replay & Ready for Next</button>
+    </div>
+    
+    <!-- Replay status overlay (center screen) -->
+    <div id="replayStatus" class="replay-status" style="display: none;">
+      Replay starting in 3 seconds...
     </div>
   </div>
-  <div class="score">Score: <span id="score">10.0</span></div>
-  <div id="poseStatus" style="color: #888; font-size: 0.9em; margin: 10px 0;">Pose: Not detecting</div>
-
-  <button id="startRoutine">Ready for Routine</button>
 
   <script>
     const video = document.getElementById('camera');
@@ -652,8 +798,13 @@
     }
     
     function startReplay() {
-      // Show replay section
+      // Show replay video overlay
       replaySection.style.display = 'block';
+      replayStatus.style.display = 'block';
+      
+      // Show close button, hide start button
+      document.getElementById('closeReplay').style.display = 'block';
+      document.getElementById('startRoutine').style.display = 'none';
       
       // Set up video source
       const videoUrl = URL.createObjectURL(recordedVideoBlob);
@@ -698,6 +849,7 @@
             
             replayStatus.textContent = `DEDUCTION: ${nextDeduction.reason} - Score: ${nextDeduction.score} (pausing 2 seconds)`;
             replayStatus.style.color = '#ff5722';
+            replayStatus.style.display = 'block';
             
             console.log(`Paused at deduction ${currentDeductionIndex + 1}: ${nextDeduction.reason} at ${nextDeduction.time.toFixed(2)}s`);
             
@@ -709,10 +861,19 @@
               
               if (currentDeductionIndex < deductionTimestamps.length) {
                 replayStatus.textContent = 'Playing routine - will pause at next deduction';
+                replayStatus.style.display = 'block';
               } else {
                 replayStatus.textContent = 'Playing routine - no more deductions';
+                replayStatus.style.display = 'block';
               }
               replayStatus.style.color = '#ff9800';
+              
+              // Hide status after 2 more seconds during normal play
+              setTimeout(() => {
+                if (!isPaused) {
+                  replayStatus.style.display = 'none';
+                }
+              }, 2000);
             }, 2000);
           }
         }
@@ -722,6 +883,7 @@
       replayVideo.addEventListener('ended', () => {
         replayStatus.textContent = `Routine Complete! Final Score: ${score.toFixed(1)}`;
         replayStatus.style.color = '#4caf50';
+        replayStatus.style.display = 'block';
         console.log('Replay finished');
         
         // Clean up video URL
@@ -761,8 +923,13 @@
     
     // Close replay and reset for next routine
     closeReplayBtn.addEventListener('click', () => {
-      // Hide replay section
+      // Hide replay overlay
       replaySection.style.display = 'none';
+      replayStatus.style.display = 'none';
+      
+      // Show start button, hide close button
+      document.getElementById('startRoutine').style.display = 'block';
+      document.getElementById('closeReplay').style.display = 'none';
       
       // Stop video and clean up
       replayVideo.pause();
