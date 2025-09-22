@@ -275,51 +275,75 @@
     // Salute detection - simplified to immediate trigger
     const SALUTE_CONFIRM_FRAMES = 5; // ~0.08 seconds to confirm salute
 
-    // Get camera and start pose detection immediately
+    // Get camera and start pose detection immediately with fallback options
     console.log('🎥 Requesting camera access...');
-    navigator.mediaDevices.getUserMedia({ 
-      video: { 
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        facingMode: 'user'
-      } 
-    })
-      .then(stream => { 
-        console.log('✅ Camera stream obtained');
-        mediaStream = stream; 
-        video.srcObject = stream;
-        
-        // Force video to play
-        video.play().then(() => {
-          console.log('📹 Video playing successfully');
-        }).catch(err => {
-          console.error('❌ Video play error:', err);
-        });
-        
-        // Start pose detection when video is ready
-        video.addEventListener('loadeddata', () => {
-          console.log('📊 Video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
-          // Wait a moment for video to stabilize
-          setTimeout(() => {
-            console.log('🤖 Starting pose detection...');
-            detectPose();
-          }, 1000);
-        });
-        
-        // Additional event listeners for debugging
-        video.addEventListener('loadedmetadata', () => {
-          console.log('📝 Video metadata loaded');
-        });
-        
-        video.addEventListener('canplay', () => {
-          console.log('▶️ Video can start playing');
-        });
-        
-      })
-      .catch(err => { 
-        console.error('❌ Camera error:', err);
-        alert('Camera not available: ' + err.message); 
-      });
+    
+    async function initializeCamera() {
+      const constraints = [
+        // Try high quality first
+        { 
+          video: { 
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user'
+          } 
+        },
+        // Fallback to basic video
+        { video: { facingMode: 'user' } },
+        // Final fallback - any video
+        { video: true }
+      ];
+      
+      for (let i = 0; i < constraints.length; i++) {
+        try {
+          console.log(`🔍 Trying camera option ${i + 1}/${constraints.length}...`);
+          const stream = await navigator.mediaDevices.getUserMedia(constraints[i]);
+          
+          console.log('✅ Camera stream obtained');
+          mediaStream = stream; 
+          video.srcObject = stream;
+          
+          // Force video to play
+          try {
+            await video.play();
+            console.log('📹 Video playing successfully');
+          } catch (playErr) {
+            console.error('❌ Video play error:', playErr);
+          }
+          
+          // Start pose detection when video is ready
+          video.addEventListener('loadeddata', () => {
+            console.log('📊 Video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
+            // Wait a moment for video to stabilize
+            setTimeout(() => {
+              console.log('🤖 Starting pose detection...');
+              detectPose();
+            }, 1000);
+          });
+          
+          // Additional event listeners for debugging
+          video.addEventListener('loadedmetadata', () => {
+            console.log('📝 Video metadata loaded');
+          });
+          
+          video.addEventListener('canplay', () => {
+            console.log('▶️ Video can start playing');
+          });
+          
+          return; // Success - exit the loop
+          
+        } catch (err) {
+          console.warn(`⚠️ Camera option ${i + 1} failed:`, err.message);
+          if (i === constraints.length - 1) {
+            // All options failed
+            console.error('❌ All camera options failed:', err);
+            alert(`Camera not available: ${err.message}\n\nTry:\n1. Closing other apps using camera\n2. Refreshing the page\n3. Checking browser permissions`); 
+          }
+        }
+      }
+    }
+    
+    initializeCamera();
 
     // Utility functions
     function calculateAngle(A, B, C) {
