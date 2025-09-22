@@ -197,6 +197,7 @@
       <div class="score">Score: <span id="score">10.0</span></div>
       <div class="status-info">
         <div id="poseStatus">Pose: Not detecting</div>
+        <div id="circleCount" style="font-size: 1.5em; font-weight: bold; margin-top: 5px;">Circles: 0</div>
       </div>
     </div>
     
@@ -217,6 +218,7 @@
     const video = document.getElementById('camera');
     const scoreDisplay = document.getElementById('score');
     const poseStatus = document.getElementById('poseStatus');
+    const circleCountDisplay = document.getElementById('circleCount');
     const replaySection = document.getElementById('replaySection');
     const replayVideo = document.getElementById('replayVideo');
     const replayStatus = document.getElementById('replayStatus');
@@ -233,8 +235,22 @@
     let recordedVideoBlob = null; // Store video for replay
     let deductionTimestamps = []; // Store when deductions occurred for replay pausing
     let mountingGracePeriod = 0; // Time when mounting grace period ends
-    let dismountGracePeriod = 0; // Time when dismount grace period ends
     let routineStarted = false;
+    let circleCount = 0; // Count of completed circles
+    
+    // Circle detection variables
+    let lastAngle = null; // Track body angle relative to apparatus
+    let totalRotation = 0; // Accumulated rotation in degrees
+    let lastValidPositionTime = 0; // Track last time we had valid position data
+    
+    // Step-off detection variables (for mushroom/pommel horse)
+    let baselineCenterX = null; // Baseline horizontal center when on apparatus
+    let stepOffGracePeriod = 0; // Time when step-off grace period ends
+    let hasSteppedOff = false; // Track if gymnast has stepped off to side
+    
+    // Landing step detection variables
+    let landingPosition = null; // Position when first landing is detected
+    let lastStepCheckTime = 0; // Prevent too frequent step checks
     
     // Routine state machine
     const ROUTINE_STATES = {
@@ -677,11 +693,6 @@
       } else if (routineState === ROUTINE_STATES.ACTIVE && waitingForBow) {
         const isBowing = detectBow(landmarks);
         if (isBowing) {
-          // Start dismount grace period when bow is detected (for sticking the landing)
-          if (dismountGracePeriod === 0) {
-            dismountGracePeriod = performance.now() + 3000; // 3 second grace period for dismount
-            console.log('🤸 Bow detected - starting 3-second dismount grace period for landing');
-          }
           console.log('Bow detected immediately - ending routine!');
           endRoutineAutomatically();
         } else {
@@ -721,14 +732,14 @@
       if (routineState === ROUTINE_STATES.ACTIVE) {
         const now = performance.now();
         const inMountingGrace = now < mountingGracePeriod;
-        const inDismountGrace = now < dismountGracePeriod;
-        const inAnyGrace = inMountingGrace || inDismountGrace;
+        const inStepOffGrace = now < stepOffGracePeriod;
+        const inAnyGrace = inMountingGrace || inStepOffGrace;
         
         if (inMountingGrace && Math.random() < 0.02) { // Occasional logging during grace period
           console.log(`Mounting grace period active - ${((mountingGracePeriod - now)/1000).toFixed(1)}s remaining`);
         }
-        if (inDismountGrace && Math.random() < 0.02) { // Occasional logging during grace period
-          console.log(`Dismount grace period active - ${((dismountGracePeriod - now)/1000).toFixed(1)}s remaining`);
+        if (inStepOffGrace && Math.random() < 0.02) { // Occasional logging during grace period
+          console.log(`Step-off grace period active - ${((stepOffGracePeriod - now)/1000).toFixed(1)}s remaining`);
         }
         
         if (leftKneeAngle < kneeThreshold) {
@@ -736,7 +747,7 @@
             console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
             addDeduction("Left leg bent");
           } else {
-            const graceType = inMountingGrace ? 'mounting' : 'dismount/landing';
+            const graceType = inMountingGrace ? 'mounting' : 'step-off/landing';
             console.log(`Left leg bent during ${graceType} - allowed (${leftKneeAngle.toFixed(1)}°)`);
           }
         } else if (leftKneeAngle < kneeThreshold + 5) {
@@ -749,7 +760,7 @@
             console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
             addDeduction("Right leg bent");
           } else {
-            const graceType = inMountingGrace ? 'mounting' : 'dismount/landing';
+            const graceType = inMountingGrace ? 'mounting' : 'step-off/landing';
             console.log(`Right leg bent during ${graceType} - allowed (${rightKneeAngle.toFixed(1)}°)`);
           }
         } else if (rightKneeAngle < kneeThreshold + 5) {
@@ -760,34 +771,235 @@
       if (routineState === ROUTINE_STATES.ACTIVE) {
         const now = performance.now();
         const inMountingGrace = now < mountingGracePeriod;
+        const inStepOffGrace = now < stepOffGracePeriod;
+        const inAnyGrace = inMountingGrace || inStepOffGrace;
         const ankleRatio = ankleDist / hipDistance;
         const kneeRatio = kneeDist / hipDistance;
         
         if (ankleRatio > maxAnkleDistFactor) {
-          if (!inMountingGrace) {
+          if (!inMountingGrace) { // Only mounting grace allows legs apart, NOT step-off grace
             console.log(`Legs apart (ankle ratio): ${ankleRatio.toFixed(2)} > ${maxAnkleDistFactor}`);
+            if (inStepOffGrace) {
+              console.log(`During landing - legs must stay together!`);
+            }
             addDeduction("Legs too far apart");
           } else {
             console.log(`Legs apart during mounting - allowed (ankle ratio: ${ankleRatio.toFixed(2)})`);
           }
         } else if (kneeRatio > maxKneeDistFactor) {
-          if (!inMountingGrace) {
+          if (!inMountingGrace) { // Only mounting grace allows legs apart, NOT step-off grace
             console.log(`Legs apart (knee ratio): ${kneeRatio.toFixed(2)} > ${maxKneeDistFactor}`);
+            if (inStepOffGrace) {
+              console.log(`During landing - legs must stay together!`);
+            }
             addDeduction("Legs too far apart");
           } else {
             console.log(`Legs apart during mounting - allowed (knee ratio: ${kneeRatio.toFixed(2)})`);
           }
         } else if (ankleDist > maxAbsoluteAnkleDist) {
-          if (!inMountingGrace) {
+          if (!inMountingGrace) { // Only mounting grace allows legs apart, NOT step-off grace
             console.log(`Legs apart (absolute): ${ankleDist.toFixed(3)} > ${maxAbsoluteAnkleDist}`);
+            if (inStepOffGrace) {
+              console.log(`During landing - legs must stay together!`);
+            }
             addDeduction("Legs too far apart");
           } else {
             console.log(`Legs apart during mounting - allowed (absolute: ${ankleDist.toFixed(3)})`);
           }
         }
       }
+      
+      // Step-off detection - detect when gymnast steps off mushroom
+      detectStepOff(landmarks);
+      
+      // Step detection during landing - check for illegal steps after landing
+      detectStepsInLanding(landmarks);
+      
+      // Circle detection - track completed circles during routine
+      detectCircles(landmarks);
     }
 
+    function detectStepOff(landmarks) {
+      if (routineState !== ROUTINE_STATES.ACTIVE || hasSteppedOff) return;
+      
+      // Calculate current body center using hips and feet
+      const leftHip = landmarks[23];
+      const rightHip = landmarks[24];
+      const leftAnkle = landmarks[27];
+      const rightAnkle = landmarks[28];
+      
+      if (!leftHip || !rightHip || !leftAnkle || !rightAnkle) {
+        return;
+      }
+      
+      // Current body center X position (average of hips and feet)
+      const hipCenterX = (leftHip.x + rightHip.x) / 2;
+      const ankleCenterX = (leftAnkle.x + rightAnkle.x) / 2;
+      const currentCenterX = (hipCenterX + ankleCenterX) / 2;
+      
+      const now = performance.now();
+      const routineTime = (now - routineStartTime) / 1000;
+      
+      // Establish baseline center position during the first 10 seconds of routine
+      if (routineTime <= 10) {
+        if (baselineCenterX === null) {
+          baselineCenterX = currentCenterX;
+          console.log(`📍 Baseline center position established: ${baselineCenterX.toFixed(3)}`);
+        } else {
+          // Update baseline with moving average for stability
+          baselineCenterX = (baselineCenterX * 0.95) + (currentCenterX * 0.05);
+        }
+        return;
+      }
+      
+      // After 10 seconds, check for significant horizontal movement (stepping off to side)
+      if (baselineCenterX !== null && !hasSteppedOff) {
+        const horizontalShift = Math.abs(currentCenterX - baselineCenterX);
+        const shiftThreshold = 0.15; // Significant movement to side indicates step-off
+        
+        if (horizontalShift > shiftThreshold) {
+          hasSteppedOff = true;
+          stepOffGracePeriod = now + 5000; // 5 second grace period for landing/bow sequence
+          
+          // Record landing position for step detection
+          landingPosition = {
+            x: currentCenterX,
+            y: (hipCenterX + ankleCenterX) / 2, // Use both x and y for more accurate step detection
+            time: now
+          };
+          
+          console.log(`🚶 STEP-OFF DETECTED! Moved ${(horizontalShift * 100).toFixed(1)}% to side - starting 5s landing grace period`);
+          console.log(`Step-off detected at ${routineTime.toFixed(1)}s into routine`);
+          console.log(`Landing position recorded for step detection`);
+        }
+      }
+    }
+    
+    function detectStepsInLanding(landmarks) {
+      // Only check for steps during step-off grace period (when landed)
+      if (!hasSteppedOff || routineState !== ROUTINE_STATES.ACTIVE) return;
+      if (!landingPosition) return;
+      
+      const now = performance.now();
+      
+      // Only check every 200ms to avoid excessive detection
+      if (now - lastStepCheckTime < 200) return;
+      lastStepCheckTime = now;
+      
+      // Calculate current position
+      const leftHip = landmarks[23];
+      const rightHip = landmarks[24];
+      const leftAnkle = landmarks[27];
+      const rightAnkle = landmarks[28];
+      
+      if (!leftHip || !rightHip || !leftAnkle || !rightAnkle) {
+        return;
+      }
+      
+      const hipCenterX = (leftHip.x + rightHip.x) / 2;
+      const ankleCenterX = (leftAnkle.x + rightAnkle.x) / 2;
+      const currentCenterX = (hipCenterX + ankleCenterX) / 2;
+      const currentCenterY = (((leftHip.y + rightHip.y) / 2) + ((leftAnkle.y + rightAnkle.y) / 2)) / 2;
+      
+      // Calculate movement from landing position
+      const moveX = Math.abs(currentCenterX - landingPosition.x);
+      const moveY = Math.abs(currentCenterY - landingPosition.y);
+      const totalMovement = Math.sqrt(moveX * moveX + moveY * moveY);
+      
+      // Step threshold - significant movement after landing
+      const stepThreshold = 0.08; // Adjust based on testing
+      
+      if (totalMovement > stepThreshold) {
+        // Allow small adjustments in first 1 second after landing
+        const timeSinceLanding = (now - landingPosition.time) / 1000;
+        if (timeSinceLanding > 1.0) {
+          console.log(`👣 STEP DETECTED! Moved ${(totalMovement * 100).toFixed(1)}% from landing position`);
+          console.log(`Movement: X=${(moveX * 100).toFixed(1)}%, Y=${(moveY * 100).toFixed(1)}%, Total=${(totalMovement * 100).toFixed(1)}%`);
+          addDeduction("Step after landing");
+          
+          // Update landing position to prevent repeated deductions for same step sequence
+          landingPosition.x = currentCenterX;
+          landingPosition.y = currentCenterY;
+          landingPosition.time = now;
+        }
+      }
+    }
+    
+    function detectCircles(landmarks) {
+      if (routineState !== ROUTINE_STATES.ACTIVE) return;
+      
+      // Calculate body angle using shoulders and hips
+      const leftShoulder = landmarks[11];
+      const rightShoulder = landmarks[12];
+      const leftHip = landmarks[23];
+      const rightHip = landmarks[24];
+      
+      // Check if we have all required landmarks
+      if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) {
+        return;
+      }
+      
+      // Calculate center points
+      const shoulderCenter = {
+        x: (leftShoulder.x + rightShoulder.x) / 2,
+        y: (leftShoulder.y + rightShoulder.y) / 2
+      };
+      const hipCenter = {
+        x: (leftHip.x + rightHip.x) / 2,
+        y: (leftHip.y + rightHip.y) / 2
+      };
+      
+      // Calculate angle of the body (torso line) relative to horizontal
+      // This represents the gymnast's position around the pommel horse
+      const deltaX = shoulderCenter.x - hipCenter.x;
+      const deltaY = shoulderCenter.y - hipCenter.y;
+      let currentAngle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+      
+      // Normalize angle to 0-360 degrees
+      if (currentAngle < 0) currentAngle += 360;
+      
+      const now = performance.now();
+      
+      if (lastAngle !== null) {
+        // Calculate the shortest angular distance
+        let angleDiff = currentAngle - lastAngle;
+        
+        // Handle wrap-around (360° to 0° and vice versa)
+        if (angleDiff > 180) {
+          angleDiff -= 360;
+        } else if (angleDiff < -180) {
+          angleDiff += 360;
+        }
+        
+        // Only count significant movements (filter out noise)
+        if (Math.abs(angleDiff) > 5 && Math.abs(angleDiff) < 90) {
+          totalRotation += Math.abs(angleDiff);
+          lastValidPositionTime = now;
+          
+          // Check if we've completed a full circle (360 degrees)
+          if (totalRotation >= 360) {
+            circleCount++;
+            totalRotation = 0; // Reset for next circle
+            console.log(`🎯 Circle completed! Total circles: ${circleCount}`);
+            
+            // Update display during live routine (will also show in replay)
+            circleCountDisplay.textContent = `Circles: ${circleCount}`;
+            if (routineState === ROUTINE_STATES.ACTIVE) {
+              console.log(`Circle ${circleCount} detected at ${((now - routineStartTime) / 1000).toFixed(1)}s into routine`);
+            }
+          }
+        }
+      }
+      
+      lastAngle = currentAngle;
+      
+      // Reset tracking if no movement for too long (gymnast may have stopped)
+      if (now - lastValidPositionTime > 3000) { // 3 seconds of no significant movement
+        totalRotation = 0;
+        console.log('Circle tracking reset due to lack of movement');
+      }
+    }
+    
     function addDeduction(reason) {
       // Allow repeated deductions for the same reason after a short cooldown
       const now = performance.now();
@@ -854,7 +1066,22 @@
       // Record routine start time for video timing
       routineStartTime = performance.now();
       mountingGracePeriod = routineStartTime + 5000; // 5 second grace period for mounting
-      dismountGracePeriod = 0; // Reset dismount grace period
+      
+      // Reset step-off detection
+      baselineCenterX = null;
+      stepOffGracePeriod = 0;
+      hasSteppedOff = false;
+      
+      // Reset landing step detection
+      landingPosition = null;
+      lastStepCheckTime = 0;
+      
+      // Reset circle detection
+      lastAngle = null;
+      totalRotation = 0;
+      lastValidPositionTime = 0;
+      circleCount = 0;
+      circleCountDisplay.textContent = 'Circles: 0';
       console.log('Routine start time recorded for video timing');
       console.log('5-second mounting grace period active - legs apart allowed for pommel mount');
       
@@ -1056,7 +1283,22 @@
       deductionTimestamps = [];
       recordedChunks = [];
       mountingGracePeriod = 0;
-      dismountGracePeriod = 0;
+      circleCount = 0; // Reset circle count for next routine
+      
+      // Reset step-off detection variables
+      baselineCenterX = null;
+      stepOffGracePeriod = 0;
+      hasSteppedOff = false;
+      
+      // Reset landing step detection variables
+      landingPosition = null;
+      lastStepCheckTime = 0;
+      
+      // Reset circle detection variables
+      lastAngle = null;
+      totalRotation = 0;
+      lastValidPositionTime = 0;
+      circleCountDisplay.textContent = 'Circles: 0';
       
       poseStatus.textContent = 'Ready for Next Routine - Score Reset';
       poseStatus.style.color = '#4caf50';
