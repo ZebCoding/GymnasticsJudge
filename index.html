@@ -5,17 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gymnastics Judge AI - Pommel Horse/Mushroom</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; text-align: center; background: #111; color: white; }
-    video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin: 10px; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; text-align: center; background: #111; color: white; min-height: 100vh; }
+    video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin: 5px; }
     canvas { display: none; }
-    #debugCanvas { display: block; border: 2px solid #444; border-radius: 12px; margin: 10px; max-width: 480px; }
-    .video-container { display: flex; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
-    .video-section { text-align: center; }
+    #debugCanvas { display: block; border: 2px solid #444; border-radius: 12px; margin: 5px; max-width: 480px; width: 100%; }
+    .video-container { display: flex; justify-content: center; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+    .video-section { text-align: center; flex: 1; min-width: 280px; max-width: 500px; }
     .video-section h3 { margin: 5px 0; color: white; font-size: 1.1em; }
-    .score { font-size: 2em; margin: 20px 0; }
-    button { padding: 12px 20px; margin: 10px; font-size: 1em; border: none; border-radius: 8px; background: #007BFF; color: white; }
+    .score { font-size: 2.5em; margin: 15px 0; font-weight: bold; color: #00ff00; }
+    #poseStatus { font-size: 0.9em; margin: 10px 0; padding: 5px; }
+    button { padding: 12px 20px; margin: 8px 5px; font-size: 1em; border: none; border-radius: 8px; background: #007BFF; color: white; min-width: 120px; }
     button:hover { background: #0056b3; }
     button:disabled { background: #555; }
+    #replayStatus { font-size: 1em; margin: 10px 0; font-weight: bold; }
+    
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+      body { padding: 5px; }
+      .score { font-size: 2em; margin: 10px 0; }
+      .video-container { flex-direction: column; align-items: center; }
+      .video-section { width: 100%; max-width: 100%; }
+      video, #debugCanvas, #replayVideo { max-width: 100%; width: 95%; }
+      button { padding: 15px 25px; margin: 10px 5px; font-size: 1.1em; min-width: 140px; }
+      .video-section h3 { font-size: 1.2em; margin: 8px 0; }
+      #poseStatus { font-size: 1em; padding: 8px; margin: 8px 0; }
+      #replayStatus { font-size: 1.1em; margin: 12px 0; }
+    }
+    
+    /* Very small screens */
+    @media (max-width: 480px) {
+      .score { font-size: 1.8em; }
+      button { padding: 12px 20px; font-size: 1em; min-width: 120px; }
+      .video-section h3 { font-size: 1em; }
+    }
   </style>
   <!-- Load MediaPipe Pose -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
@@ -900,13 +922,18 @@
       startBtn.disabled = false;
       startBtn.textContent = 'Ready for Routine';
       
+      // Reset score for next person
+      score = 10.0;
+      scoreDisplay.textContent = score.toFixed(1);
+      lastDeductionAt = {}; // Clear deduction cooldowns
+      
       // Clear recorded data
       recordedVideoBlob = null;
       deductionTimestamps = [];
       recordedChunks = [];
       mountingGracePeriod = 0;
       
-      poseStatus.textContent = 'Ready for Next Routine';
+      poseStatus.textContent = 'Ready for Next Routine - Score Reset';
       poseStatus.style.color = '#4caf50';
       
       console.log('Replay closed, ready for next routine');
