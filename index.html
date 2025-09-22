@@ -541,10 +541,6 @@
           poseStatus.textContent = 'Pose: Recovering from freeze...';
           poseStatus.style.color = '#ff5722';
           
-          // Force canvas clear and reset
-          if (showDebug) {
-            debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-          }
           lastSuccessfulPose = now; // Reset timer
           consecutiveFailures = 0; // Reset failure counter
         } else {
@@ -625,7 +621,7 @@
           poseStatus.textContent = 'Ready - Waiting for Salute (raise one arm)';
           poseStatus.style.color = '#ff9800';
         }
-      }
+      } else if (routineState === ROUTINE_STATES.ACTIVE && waitingForBow) {
         const isBowing = detectBow(landmarks);
         if (isBowing) {
           console.log('Bow detected immediately - ending routine!');
