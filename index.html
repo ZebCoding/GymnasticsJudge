@@ -325,13 +325,13 @@
       const verySignificantDrop = nose.y > shoulderY + 0.05; // Moderate bow (was 0.12)
       const torsoCompressed = (shoulderY - hipY) < 0.15; // More forgiving compression (was 0.13)
       
-      // Additional check: arms must be at sides (not reaching down)
+      // Relaxed check: prevent obvious equipment reaching but allow natural bow posture
       const leftWrist = landmarks[15], rightWrist = landmarks[16];
       let armsAtSides = true;
       if (leftWrist && rightWrist) {
-        // Arms at sides = wrists near shoulder level or above, not reaching down
-        const leftArmReaching = leftWrist.y > leftShoulder.y + 0.1;
-        const rightArmReaching = rightWrist.y > rightShoulder.y + 0.1;
+        // Only block if arms are VERY far down (obvious equipment reaching)
+        const leftArmReaching = leftWrist.y > leftShoulder.y + 0.2; // Was 0.1, now 0.2
+        const rightArmReaching = rightWrist.y > rightShoulder.y + 0.2; // Much more forgiving
         armsAtSides = !leftArmReaching && !rightArmReaching;
       }
       
@@ -350,8 +350,8 @@
         console.log(`Torso compressed (${shoulderY.toFixed(3)} - ${hipY.toFixed(3)} = ${(shoulderY - hipY).toFixed(3)} < 0.15): ${torsoCompressed}`);
         console.log(`Arms at sides (not reaching): ${armsAtSides}`);
         if (leftWrist && rightWrist) {
-          const leftReaching = leftWrist.y > leftShoulder.y + 0.1;
-          const rightReaching = rightWrist.y > rightShoulder.y + 0.1;
+          const leftReaching = leftWrist.y > leftShoulder.y + 0.2;
+          const rightReaching = rightWrist.y > rightShoulder.y + 0.2;
           console.log(`Wrist positions - Left:${leftWrist.y.toFixed(3)} (reaching: ${leftReaching}) Right:${rightWrist.y.toFixed(3)} (reaching: ${rightReaching})`);
         }
         console.log(`✅ FINAL BOW DETECTION: ${finalBowDetection}`);
