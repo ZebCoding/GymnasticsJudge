@@ -233,6 +233,7 @@
     let recordedVideoBlob = null; // Store video for replay
     let deductionTimestamps = []; // Store when deductions occurred for replay pausing
     let mountingGracePeriod = 0; // Time when mounting grace period ends
+    let dismountGracePeriod = 0; // Time when dismount grace period ends
     let routineStarted = false;
     
     // Routine state machine
@@ -676,6 +677,11 @@
       } else if (routineState === ROUTINE_STATES.ACTIVE && waitingForBow) {
         const isBowing = detectBow(landmarks);
         if (isBowing) {
+          // Start dismount grace period when bow is detected (for sticking the landing)
+          if (dismountGracePeriod === 0) {
+            dismountGracePeriod = performance.now() + 3000; // 3 second grace period for dismount
+            console.log('🤸 Bow detected - starting 3-second dismount grace period for landing');
+          }
           console.log('Bow detected immediately - ending routine!');
           endRoutineAutomatically();
         } else {
@@ -715,17 +721,23 @@
       if (routineState === ROUTINE_STATES.ACTIVE) {
         const now = performance.now();
         const inMountingGrace = now < mountingGracePeriod;
+        const inDismountGrace = now < dismountGracePeriod;
+        const inAnyGrace = inMountingGrace || inDismountGrace;
         
         if (inMountingGrace && Math.random() < 0.02) { // Occasional logging during grace period
           console.log(`Mounting grace period active - ${((mountingGracePeriod - now)/1000).toFixed(1)}s remaining`);
         }
+        if (inDismountGrace && Math.random() < 0.02) { // Occasional logging during grace period
+          console.log(`Dismount grace period active - ${((dismountGracePeriod - now)/1000).toFixed(1)}s remaining`);
+        }
         
         if (leftKneeAngle < kneeThreshold) {
-          if (!inMountingGrace) {
+          if (!inAnyGrace) {
             console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
             addDeduction("Left leg bent");
           } else {
-            console.log(`Left leg bent during mounting - allowed (${leftKneeAngle.toFixed(1)}°)`);
+            const graceType = inMountingGrace ? 'mounting' : 'dismount/landing';
+            console.log(`Left leg bent during ${graceType} - allowed (${leftKneeAngle.toFixed(1)}°)`);
           }
         } else if (leftKneeAngle < kneeThreshold + 5) {
           // Log near-misses to see if angles are fluctuating around threshold
@@ -733,11 +745,12 @@
         }
         
         if (rightKneeAngle < kneeThreshold) {
-          if (!inMountingGrace) {
+          if (!inAnyGrace) {
             console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
             addDeduction("Right leg bent");
           } else {
-            console.log(`Right leg bent during mounting - allowed (${rightKneeAngle.toFixed(1)}°)`);
+            const graceType = inMountingGrace ? 'mounting' : 'dismount/landing';
+            console.log(`Right leg bent during ${graceType} - allowed (${rightKneeAngle.toFixed(1)}°)`);
           }
         } else if (rightKneeAngle < kneeThreshold + 5) {
           console.log(`Right leg close to bent: ${rightKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
@@ -841,6 +854,7 @@
       // Record routine start time for video timing
       routineStartTime = performance.now();
       mountingGracePeriod = routineStartTime + 5000; // 5 second grace period for mounting
+      dismountGracePeriod = 0; // Reset dismount grace period
       console.log('Routine start time recorded for video timing');
       console.log('5-second mounting grace period active - legs apart allowed for pommel mount');
       
@@ -1042,6 +1056,7 @@
       deductionTimestamps = [];
       recordedChunks = [];
       mountingGracePeriod = 0;
+      dismountGracePeriod = 0;
       
       poseStatus.textContent = 'Ready for Next Routine - Score Reset';
       poseStatus.style.color = '#4caf50';
