@@ -129,55 +129,6 @@
       z-index: 5; /* Above camera feed but below UI overlay */
     }
     
-    /* Video controls overlay */
-    .video-controls {
-      position: absolute;
-      bottom: 80px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.8);
-      padding: 15px 25px;
-      border-radius: 25px;
-      display: none;
-      align-items: center;
-      gap: 15px;
-      z-index: 10;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-    }
-    
-    .video-controls button {
-      padding: 10px 15px;
-      margin: 0;
-      font-size: 1em;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      color: white;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    
-    .video-controls button:hover {
-      background: rgba(255, 255, 255, 0.3);
-      transform: none;
-    }
-    
-    .video-controls input[type="range"] {
-      width: 300px;
-      height: 8px;
-      background: rgba(255, 255, 255, 0.3);
-      border-radius: 4px;
-      outline: none;
-      cursor: pointer;
-    }
-    
-    .video-controls .time-display {
-      color: white;
-      font-size: 0.9em;
-      font-weight: bold;
-      min-width: 80px;
-      text-align: center;
-    }
     
     /* Mobile adjustments */
     @media (max-width: 768px) {
@@ -262,15 +213,6 @@
       Replay starting in 3 seconds...
     </div>
     
-    <!-- Video controls (hidden initially) -->
-    <div id="videoControls" class="video-controls">
-      <button id="playPauseBtn">⏸️ Pause</button>
-      <div class="time-display" id="currentTime">0:00</div>
-      <input type="range" id="progressBar" min="0" max="100" value="0">
-      <div class="time-display" id="totalTime">0:00</div>
-      <button id="skipBackBtn">⏪ -10s</button>
-      <button id="skipForwardBtn">⏩ +10s</button>
-    </div>
   </div>
 
   <script>
@@ -286,14 +228,6 @@
     const startBtn = document.getElementById('startRoutine');
     const closeReplayBtn = document.getElementById('closeReplay');
     
-    // Video control elements
-    const videoControls = document.getElementById('videoControls');
-    const playPauseBtn = document.getElementById('playPauseBtn');
-    const progressBar = document.getElementById('progressBar');
-    const currentTimeDisplay = document.getElementById('currentTime');
-    const totalTimeDisplay = document.getElementById('totalTime');
-    const skipBackBtn = document.getElementById('skipBackBtn');
-    const skipForwardBtn = document.getElementById('skipForwardBtn');
     
 
     let score = 10.0;
@@ -1228,78 +1162,12 @@
     }
     
     function enableManualControls() {
-      // Show video controls
-      videoControls.style.display = 'flex';
+      // Enable native HTML video controls
+      replayVideo.controls = true;
       
-      // Setup progress bar max value
-      progressBar.max = replayVideo.duration;
-      totalTimeDisplay.textContent = formatTime(replayVideo.duration);
-      
-      // Add manual control event listeners
-      setupVideoControlHandlers();
-      
-      console.log('Manual video controls enabled');
+      console.log('Native video controls enabled - you can now scrub through the video');
     }
     
-    function formatTime(seconds) {
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.floor(seconds % 60);
-      return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
-    
-    function setupVideoControlHandlers() {
-      // Play/Pause button
-      playPauseBtn.onclick = () => {
-        if (replayVideo.paused) {
-          replayVideo.play();
-          playPauseBtn.textContent = '⏸️ Pause';
-        } else {
-          replayVideo.pause();
-          playPauseBtn.textContent = '▶️ Play';
-        }
-      };
-      
-      // Progress bar scrubbing
-      progressBar.oninput = () => {
-        replayVideo.currentTime = progressBar.value;
-      };
-      
-      // Skip back 10 seconds
-      skipBackBtn.onclick = () => {
-        replayVideo.currentTime = Math.max(0, replayVideo.currentTime - 10);
-      };
-      
-      // Skip forward 10 seconds
-      skipForwardBtn.onclick = () => {
-        replayVideo.currentTime = Math.min(replayVideo.duration, replayVideo.currentTime + 10);
-      };
-      
-      // Update time displays and progress bar
-      replayVideo.addEventListener('timeupdate', () => {
-        currentTimeDisplay.textContent = formatTime(replayVideo.currentTime);
-        progressBar.value = replayVideo.currentTime;
-        
-        // Show deduction info at current time
-        showDeductionAtCurrentTime();
-      });
-    }
-    
-    function showDeductionAtCurrentTime() {
-      const currentTime = replayVideo.currentTime;
-      
-      // Find deduction at current time (within 1 second)
-      const currentDeduction = deductionTimestamps.find(d => 
-        Math.abs(d.time - currentTime) < 1.0
-      );
-      
-      if (currentDeduction) {
-        replayStatus.textContent = `At ${formatTime(currentTime)}: ${currentDeduction.reason} - Score: ${currentDeduction.score}`;
-        replayStatus.style.color = '#ff5722';
-        replayStatus.style.display = 'block';
-      } else {
-        replayStatus.style.display = 'none';
-      }
-    }
     
     function startVideoPlayback() {
       let currentDeductionIndex = 0;
@@ -1402,10 +1270,9 @@
     
     // Close replay and reset for next routine
     closeReplayBtn.addEventListener('click', () => {
-      // Hide replay overlay and controls
+      // Hide replay overlay
       replaySection.style.display = 'none';
       replayStatus.style.display = 'none';
-      videoControls.style.display = 'none';
       
       // Show start button, hide close button
       document.getElementById('startRoutine').style.display = 'block';
@@ -1413,16 +1280,11 @@
       
       // Stop video and clean up
       replayVideo.pause();
+      replayVideo.controls = false; // Disable native controls
       if (replayVideo.src) {
         URL.revokeObjectURL(replayVideo.src);
       }
       replayVideo.src = '';
-      
-      // Remove manual control event listeners to prevent memory leaks
-      playPauseBtn.onclick = null;
-      progressBar.oninput = null;
-      skipBackBtn.onclick = null;
-      skipForwardBtn.onclick = null;
       
       // Reset for next routine
       routineState = ROUTINE_STATES.WAITING;
