@@ -72,6 +72,7 @@
     let routineStartTime = 0; // When routine actually started (for video timing)
     let recordedVideoBlob = null; // Store video for replay
     let deductionTimestamps = []; // Store when deductions occurred for replay pausing
+    let mountingGracePeriod = 0; // Time when mounting grace period ends
     let routineStarted = false;
     
     // Routine state machine
@@ -84,7 +85,7 @@
     let routineState = ROUTINE_STATES.WAITING;
 
     // Control repeated deductions: per-reason cooldown in milliseconds
-    const DEDUCTION_COOLDOWN_MS = 1500;
+    const DEDUCTION_COOLDOWN_MS = 1000; // 1 second cooldown
     let lastDeductionAt = {}; // reason -> timestamp (performance.now())
     
     // Detection loop monitoring
@@ -582,35 +583,64 @@
 
       // Check deductions with debugging - ONLY during ACTIVE routine state
       if (routineState === ROUTINE_STATES.ACTIVE) {
+        const now = performance.now();
+        const inMountingGrace = now < mountingGracePeriod;
+        
+        if (inMountingGrace && Math.random() < 0.02) { // Occasional logging during grace period
+          console.log(`Mounting grace period active - ${((mountingGracePeriod - now)/1000).toFixed(1)}s remaining`);
+        }
+        
         if (leftKneeAngle < kneeThreshold) {
-          console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
-          addDeduction("Left leg bent");
+          if (!inMountingGrace) {
+            console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
+            addDeduction("Left leg bent");
+          } else {
+            console.log(`Left leg bent during mounting - allowed (${leftKneeAngle.toFixed(1)}°)`);
+          }
         } else if (leftKneeAngle < kneeThreshold + 5) {
           // Log near-misses to see if angles are fluctuating around threshold
           console.log(`Left leg close to bent: ${leftKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
         }
         
         if (rightKneeAngle < kneeThreshold) {
-          console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
-          addDeduction("Right leg bent");
+          if (!inMountingGrace) {
+            console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
+            addDeduction("Right leg bent");
+          } else {
+            console.log(`Right leg bent during mounting - allowed (${rightKneeAngle.toFixed(1)}°)`);
+          }
         } else if (rightKneeAngle < kneeThreshold + 5) {
           console.log(`Right leg close to bent: ${rightKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
         }
       }
       // Multiple checks for legs too far apart - ONLY during ACTIVE routine state
       if (routineState === ROUTINE_STATES.ACTIVE) {
+        const now = performance.now();
+        const inMountingGrace = now < mountingGracePeriod;
         const ankleRatio = ankleDist / hipDistance;
         const kneeRatio = kneeDist / hipDistance;
         
         if (ankleRatio > maxAnkleDistFactor) {
-          console.log(`Legs apart (ankle ratio): ${ankleRatio.toFixed(2)} > ${maxAnkleDistFactor}`);
-          addDeduction("Legs too far apart");
+          if (!inMountingGrace) {
+            console.log(`Legs apart (ankle ratio): ${ankleRatio.toFixed(2)} > ${maxAnkleDistFactor}`);
+            addDeduction("Legs too far apart");
+          } else {
+            console.log(`Legs apart during mounting - allowed (ankle ratio: ${ankleRatio.toFixed(2)})`);
+          }
         } else if (kneeRatio > maxKneeDistFactor) {
-          console.log(`Legs apart (knee ratio): ${kneeRatio.toFixed(2)} > ${maxKneeDistFactor}`);
-          addDeduction("Legs too far apart");
+          if (!inMountingGrace) {
+            console.log(`Legs apart (knee ratio): ${kneeRatio.toFixed(2)} > ${maxKneeDistFactor}`);
+            addDeduction("Legs too far apart");
+          } else {
+            console.log(`Legs apart during mounting - allowed (knee ratio: ${kneeRatio.toFixed(2)})`);
+          }
         } else if (ankleDist > maxAbsoluteAnkleDist) {
-          console.log(`Legs apart (absolute): ${ankleDist.toFixed(3)} > ${maxAbsoluteAnkleDist}`);
-          addDeduction("Legs too far apart");
+          if (!inMountingGrace) {
+            console.log(`Legs apart (absolute): ${ankleDist.toFixed(3)} > ${maxAbsoluteAnkleDist}`);
+            addDeduction("Legs too far apart");
+          } else {
+            console.log(`Legs apart during mounting - allowed (absolute: ${ankleDist.toFixed(3)})`);
+          }
         }
       }
     }
@@ -686,7 +716,9 @@
       
       // Record routine start time for video timing
       routineStartTime = performance.now();
+      mountingGracePeriod = routineStartTime + 5000; // 5 second grace period for mounting
       console.log('Routine start time recorded for video timing');
+      console.log('5-second mounting grace period active - legs apart allowed for pommel mount');
       
       // Setup MediaRecorder
       recordedChunks = []; // Clear previous recording
@@ -872,6 +904,7 @@
       recordedVideoBlob = null;
       deductionTimestamps = [];
       recordedChunks = [];
+      mountingGracePeriod = 0;
       
       poseStatus.textContent = 'Ready for Next Routine';
       poseStatus.style.color = '#4caf50';
