@@ -33,6 +33,16 @@
       <canvas id="debugCanvas"></canvas>
     </div>
   </div>
+  
+  <!-- Replay Video Section (hidden by default) -->
+  <div id="replaySection" class="video-container" style="display: none; margin-top: 20px;">
+    <div class="video-section">
+      <h3>Routine Replay - Pausing at Deductions</h3>
+      <video id="replayVideo" controls style="width: 100%; max-width: 640px; border: 2px solid #007BFF; border-radius: 12px;"></video>
+      <div id="replayStatus" style="color: #ff9800; margin: 10px 0; font-weight: bold;">Replay starting in 3 seconds...</div>
+      <button id="closeReplay" style="margin-top: 10px;">Close Replay & Ready for Next Routine</button>
+    </div>
+  </div>
   <canvas id="snapshot"></canvas>
   <div class="score">Score: <span id="score">10.0</span></div>
   <div id="poseStatus" style="color: #888; font-size: 0.9em; margin: 10px 0;">Pose: Not detecting</div>
@@ -51,11 +61,15 @@
     const debugCtx = debugCanvas.getContext('2d');
     const scoreDisplay = document.getElementById('score');
     const poseStatus = document.getElementById('poseStatus');
+    const replaySection = document.getElementById('replaySection');
+    const replayVideo = document.getElementById('replayVideo');
+    const replayStatus = document.getElementById('replayStatus');
 
     const startBtn = document.getElementById('startRoutine');
     const endBtn = document.getElementById('endRoutine');
     const clearLogBtn = document.getElementById('clearLog');
     const toggleDebugBtn = document.getElementById('toggleDebug');
+    const closeReplayBtn = document.getElementById('closeReplay');
     
     let showDebug = true; // Start with debug visible
 
@@ -64,6 +78,9 @@
     let mediaStream;
     let mediaRecorder;
     let recordedChunks = [];
+    let routineStartTime = 0; // When routine actually started (for video timing)
+    let recordedVideoBlob = null; // Store video for replay
+    let deductionTimestamps = []; // Store when deductions occurred for replay pausing
     let routineStarted = false;
     
     // Routine state machine
@@ -629,6 +646,15 @@
         console.log('Score in danger zone, verifying min score enforcement');
       }
 
+      // Record timestamp for replay (time since routine started)
+      const videoTime = (now - routineStartTime) / 1000; // Convert to seconds
+      deductionTimestamps.push({
+        time: videoTime,
+        reason: reason,
+        score: score.toFixed(1)
+      });
+      console.log(`Deduction timestamp recorded: ${videoTime.toFixed(2)}s into routine`);
+
       // Snapshot
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -672,21 +698,23 @@
       score = 10.0;
       deductions = [];
       lastDeductionAt = {};
+      deductionTimestamps = []; // Reset deduction timestamps
       scoreDisplay.textContent = score.toFixed(1);
       localStorage.removeItem('deductionsLog');
       
+      // Record routine start time for video timing
+      routineStartTime = performance.now();
+      console.log('Routine start time recorded for video timing');
+      
       // Setup MediaRecorder
+      recordedChunks = []; // Clear previous recording
       mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/webm" });
       mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
       mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: "video/webm" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `routine_${Date.now()}.webm`;
-        a.click();
-        URL.revokeObjectURL(url);
-        recordedChunks = [];
+        // Store video blob for replay instead of downloading
+        recordedVideoBlob = new Blob(recordedChunks, { type: "video/webm" });
+        console.log('Video recorded, starting replay system');
+        startReplay();
       };
       mediaRecorder.start();
       
@@ -717,7 +745,86 @@
       poseStatus.textContent = 'Routine Complete - Ready for Next';
       poseStatus.style.color = '#4caf50';
       
-      alert(`Routine complete! Final Score: ${score.toFixed(1)}`);
+      // Don't show alert immediately - replay will handle this
+      console.log(`Routine complete! Final Score: ${score.toFixed(1)}`);
+    }
+    
+    function startReplay() {
+      // Show replay section
+      replaySection.style.display = 'block';
+      
+      // Set up video source
+      const videoUrl = URL.createObjectURL(recordedVideoBlob);
+      replayVideo.src = videoUrl;
+      
+      console.log(`Starting replay with ${deductionTimestamps.length} deductions to pause at:`, deductionTimestamps);
+      
+      // Start countdown
+      let countdown = 3;
+      replayStatus.textContent = `Replay starting in ${countdown} seconds...`;
+      
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          replayStatus.textContent = `Replay starting in ${countdown} seconds...`;
+        } else {
+          clearInterval(countdownInterval);
+          replayStatus.textContent = 'Playing routine - will pause at deductions';
+          startVideoPlayback();
+        }
+      }, 1000);
+    }
+    
+    function startVideoPlayback() {
+      let currentDeductionIndex = 0;
+      let isPaused = false;
+      
+      replayVideo.play();
+      
+      // Monitor video progress and pause at deductions
+      replayVideo.addEventListener('timeupdate', function checkForDeductions() {
+        const currentTime = replayVideo.currentTime;
+        
+        // Check if we need to pause at a deduction
+        if (!isPaused && currentDeductionIndex < deductionTimestamps.length) {
+          const nextDeduction = deductionTimestamps[currentDeductionIndex];
+          
+          // Pause if we've reached or passed the deduction time
+          if (currentTime >= nextDeduction.time) {
+            isPaused = true;
+            replayVideo.pause();
+            
+            replayStatus.textContent = `DEDUCTION: ${nextDeduction.reason} - Score: ${nextDeduction.score} (pausing 2 seconds)`;
+            replayStatus.style.color = '#ff5722';
+            
+            console.log(`Paused at deduction ${currentDeductionIndex + 1}: ${nextDeduction.reason} at ${nextDeduction.time.toFixed(2)}s`);
+            
+            // Resume after 2 seconds
+            setTimeout(() => {
+              currentDeductionIndex++;
+              isPaused = false;
+              replayVideo.play();
+              
+              if (currentDeductionIndex < deductionTimestamps.length) {
+                replayStatus.textContent = 'Playing routine - will pause at next deduction';
+              } else {
+                replayStatus.textContent = 'Playing routine - no more deductions';
+              }
+              replayStatus.style.color = '#ff9800';
+            }, 2000);
+          }
+        }
+      });
+      
+      // Handle video end
+      replayVideo.addEventListener('ended', () => {
+        replayStatus.textContent = `Routine Complete! Final Score: ${score.toFixed(1)}`;
+        replayStatus.style.color = '#4caf50';
+        console.log('Replay finished');
+        
+        // Clean up video URL
+        URL.revokeObjectURL(replayVideo.src);
+      });
     }
 
     // Start routine - now activates gesture detection mode
@@ -775,6 +882,35 @@
       if (!showDebug) {
         debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
       }
+    });
+    
+    // Close replay and reset for next routine
+    closeReplayBtn.addEventListener('click', () => {
+      // Hide replay section
+      replaySection.style.display = 'none';
+      
+      // Stop video and clean up
+      replayVideo.pause();
+      if (replayVideo.src) {
+        URL.revokeObjectURL(replayVideo.src);
+      }
+      replayVideo.src = '';
+      
+      // Reset for next routine
+      routineState = ROUTINE_STATES.WAITING;
+      startBtn.disabled = false;
+      startBtn.textContent = 'Ready for Routine';
+      endBtn.disabled = true;
+      
+      // Clear recorded data
+      recordedVideoBlob = null;
+      deductionTimestamps = [];
+      recordedChunks = [];
+      
+      poseStatus.textContent = 'Ready for Next Routine';
+      poseStatus.style.color = '#4caf50';
+      
+      console.log('Replay closed, ready for next routine');
     });
   </script>
 </body>
