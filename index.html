@@ -397,7 +397,6 @@
       return leftArmDown && rightArmDown;
     }
     
-    
     function detectBow(landmarks) {
       // Bow detection based on real bowing posture analysis
       const nose = landmarks[0];
@@ -515,10 +514,6 @@
         // More aggressive recovery for persistent failures
         if (poseFailureCount >= MAX_POSE_FAILURES) {
           console.log('Too many pose detection failures, forcing recovery');
-          // Clear canvas and reset everything
-          if (showDebug && debugCtx) {
-            debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-          }
           poseFailureCount = 0;
           consecutiveFailures = 0;
           lastSuccessfulPose = performance.now();
