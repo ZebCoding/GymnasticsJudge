@@ -43,19 +43,14 @@
       <button id="closeReplay" style="margin-top: 10px;">Close Replay & Ready for Next Routine</button>
     </div>
   </div>
-  <canvas id="snapshot"></canvas>
   <div class="score">Score: <span id="score">10.0</span></div>
   <div id="poseStatus" style="color: #888; font-size: 0.9em; margin: 10px 0;">Pose: Not detecting</div>
 
   <button id="startRoutine">Ready for Routine</button>
-  <button id="viewDeductions" onclick="location.href='deductions.html'">View Deductions</button>
-  <button id="clearLog">Clear Log</button>
   <button id="toggleDebug">Show Pose Debug</button>
 
   <script>
     const video = document.getElementById('camera');
-    const canvas = document.getElementById('snapshot');
-    const ctx = canvas.getContext('2d');
     const debugCanvas = document.getElementById('debugCanvas');
     const debugCtx = debugCanvas.getContext('2d');
     const scoreDisplay = document.getElementById('score');
@@ -65,14 +60,12 @@
     const replayStatus = document.getElementById('replayStatus');
 
     const startBtn = document.getElementById('startRoutine');
-    const clearLogBtn = document.getElementById('clearLog');
     const toggleDebugBtn = document.getElementById('toggleDebug');
     const closeReplayBtn = document.getElementById('closeReplay');
     
     let showDebug = true; // Start with debug visible
 
     let score = 10.0;
-    let deductions = [];
     let mediaStream;
     let mediaRecorder;
     let recordedChunks = [];
@@ -631,8 +624,8 @@
         return;
       }
       
-      // Safety check: prevent excessive deductions that could crash the system
-      if (deductions.length > 50) {
+      // Safety check: prevent excessive deduction frequency
+      if (deductionTimestamps.length > 50) {
         console.warn('Deduction limit reached to prevent system overload');
         return;
       }
@@ -660,43 +653,9 @@
       });
       console.log(`Deduction timestamp recorded: ${videoTime.toFixed(2)}s into routine`);
 
-      // Optimize snapshot taking - only every few deductions to prevent crashes
-      let imageData = null;
-      const shouldTakeSnapshot = deductions.length < 10 || (deductions.length % 3 === 0); // Fewer snapshots
-      
-      if (shouldTakeSnapshot) {
-        try {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          imageData = canvas.toDataURL('image/png');
-          console.log('Snapshot taken for deduction logging');
-        } catch (error) {
-          console.warn('Failed to take snapshot, skipping:', error);
-          imageData = null;
-        }
-      } else {
-        console.log('Skipping snapshot to maintain performance');
-      }
-
-      const event = {
-        time: new Date().toLocaleTimeString(),
-        reason: reason,
-        deduction: 0.2,
-        remaining: score.toFixed(1),
-        snapshot: imageData
-      };
-      deductions.push(event);
+      // Simply update the score display - no snapshots or logging needed
       scoreDisplay.textContent = score.toFixed(1);
-      
-      // Optimize localStorage writes - only save periodically to prevent crashes
-      try {
-        if (deductions.length % 5 === 0 || score <= 5.0) { // Save every 5 deductions or at minimum score
-          localStorage.setItem('deductionsLog', JSON.stringify(deductions));
-        }
-      } catch (error) {
-        console.warn('Failed to save to localStorage:', error);
-      }
+      console.log(`Score updated to ${score.toFixed(1)} - deduction will be shown in video replay`);
     }
     
     function startRoutineAutomatically() {
@@ -719,13 +678,11 @@
         console.log('Debug mode active, skeleton should be visible');
       }
       
-      // Reset score & log
+      // Reset score & tracking
       score = 10.0;
-      deductions = [];
       lastDeductionAt = {};
       deductionTimestamps = []; // Reset deduction timestamps
       scoreDisplay.textContent = score.toFixed(1);
-      localStorage.removeItem('deductionsLog');
       
       // Record routine start time for video timing
       routineStartTime = performance.now();
@@ -883,14 +840,7 @@
 
     // Manual end button removed - using automatic bow detection only
 
-    // Clear log
-    clearLogBtn.addEventListener("click", () => {
-      deductions = [];
-      score = 10.0;
-      scoreDisplay.textContent = score.toFixed(1);
-      localStorage.removeItem('deductionsLog');
-      alert("Log cleared, score reset.");
-    });
+    // Clear log functionality removed - using video replay instead
     
     // Toggle debug overlay
     toggleDebugBtn.addEventListener('click', () => {
