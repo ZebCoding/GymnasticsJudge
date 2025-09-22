@@ -8,7 +8,6 @@
     body { font-family: Arial, sans-serif; margin: 0; padding: 10px; text-align: center; background: #111; color: white; min-height: 100vh; }
     video { width: 100%; max-width: 480px; border: 2px solid #444; border-radius: 12px; margin: 5px; }
     canvas { display: none; }
-    #debugCanvas { display: block; border: 2px solid #444; border-radius: 12px; margin: 5px; max-width: 480px; width: 100%; }
     .video-container { display: flex; justify-content: center; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
     .video-section { text-align: center; flex: 1; min-width: 280px; max-width: 500px; }
     .video-section h3 { margin: 5px 0; color: white; font-size: 1.1em; }
@@ -25,7 +24,7 @@
       .score { font-size: 2em; margin: 10px 0; }
       .video-container { flex-direction: column; align-items: center; }
       .video-section { width: 100%; max-width: 100%; }
-      video, #debugCanvas, #replayVideo { max-width: 100%; width: 95%; }
+      video, #replayVideo { max-width: 100%; width: 95%; }
       button { padding: 15px 25px; margin: 10px 5px; font-size: 1.1em; min-width: 140px; }
       .video-section h3 { font-size: 1.2em; margin: 8px 0; }
       #poseStatus { font-size: 1em; padding: 8px; margin: 8px 0; }
@@ -50,10 +49,6 @@
       <h3>Camera Feed</h3>
       <video id="camera" autoplay playsinline></video>
     </div>
-    <div class="video-section">
-      <h3>Pose Detection</h3>
-      <canvas id="debugCanvas"></canvas>
-    </div>
   </div>
   
   <!-- Replay Video Section (hidden by default) -->
@@ -69,12 +64,9 @@
   <div id="poseStatus" style="color: #888; font-size: 0.9em; margin: 10px 0;">Pose: Not detecting</div>
 
   <button id="startRoutine">Ready for Routine</button>
-  <button id="toggleDebug">Show Pose Debug</button>
 
   <script>
     const video = document.getElementById('camera');
-    const debugCanvas = document.getElementById('debugCanvas');
-    const debugCtx = debugCanvas.getContext('2d');
     const scoreDisplay = document.getElementById('score');
     const poseStatus = document.getElementById('poseStatus');
     const replaySection = document.getElementById('replaySection');
@@ -82,10 +74,8 @@
     const replayStatus = document.getElementById('replayStatus');
 
     const startBtn = document.getElementById('startRoutine');
-    const toggleDebugBtn = document.getElementById('toggleDebug');
     const closeReplayBtn = document.getElementById('closeReplay');
     
-    let showDebug = true; // Start with debug visible
 
     let score = 10.0;
     let mediaStream;
@@ -127,10 +117,6 @@
     const MAX_FREEZE_TIME = 3000; // 3 seconds without pose updates = frozen
     const RESTART_THRESHOLD = 5; // Restart after 5 consecutive failures
     
-    // Skeleton tracking for debugging
-    let skeletonDrawCount = 0;
-    let lastSkeletonDraw = 0;
-    let skeletonFailures = 0;
     
     // Gesture detection
     let waitingForSalute = false;
@@ -240,94 +226,6 @@
       return leftArmDown && rightArmDown;
     }
     
-    function drawPoseSkeleton(landmarks) {
-      const now = performance.now();
-      
-      if (!landmarks || !debugCtx || !debugCanvas) {
-        skeletonFailures++;
-        console.log(`SKELETON FAILURE #${skeletonFailures} - Missing:`, {landmarks: !!landmarks, ctx: !!debugCtx, canvas: !!debugCanvas, state: routineState});
-        return;
-      }
-      
-      skeletonDrawCount++;
-      lastSkeletonDraw = now;
-      
-      // Log skeleton status periodically
-      if (skeletonDrawCount % 30 === 0) {
-        console.log(`SKELETON STATUS - Draw count: ${skeletonDrawCount}, Last: ${((now - lastSkeletonDraw)/1000).toFixed(1)}s ago, Failures: ${skeletonFailures}`);
-      }
-      
-      try {
-        // Set canvas dimensions to match video (but independent sizing)
-        const videoWidth = video.videoWidth || 640;
-        const videoHeight = video.videoHeight || 480;
-        const displayWidth = Math.min(480, videoWidth);
-        const displayHeight = (displayWidth * videoHeight) / videoWidth;
-        
-        // Only resize if dimensions changed and valid
-        if (videoWidth > 0 && videoHeight > 0 && 
-            (debugCanvas.width !== videoWidth || debugCanvas.height !== videoHeight)) {
-          debugCanvas.width = videoWidth;
-          debugCanvas.height = videoHeight;
-          debugCanvas.style.width = displayWidth + 'px';
-          debugCanvas.style.height = displayHeight + 'px';
-          console.log('Canvas resized to:', videoWidth, 'x', videoHeight, 'display:', displayWidth, 'x', displayHeight);
-        }
-        
-        // Clear previous frame with error handling
-        debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-      
-      const w = debugCanvas.width;
-      const h = debugCanvas.height;
-      
-      // Draw landmarks as dots (more forgiving visibility check)
-      debugCtx.fillStyle = '#00ff00';
-      landmarks.forEach((landmark, i) => {
-        if (landmark && (landmark.visibility === undefined || landmark.visibility > 0.3)) {
-          const x = landmark.x * w;
-          const y = landmark.y * h;
-          debugCtx.beginPath();
-          debugCtx.arc(x, y, 4, 0, 2 * Math.PI);
-          debugCtx.fill();
-          
-          // Label key points
-          if ([0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].includes(i)) {
-            debugCtx.fillStyle = '#ffffff';
-            debugCtx.font = '12px Arial';
-            debugCtx.fillText(i, x + 6, y - 6);
-            debugCtx.fillStyle = '#00ff00';
-          }
-        }
-      });
-      
-      // Draw skeleton connections
-      debugCtx.strokeStyle = '#ff0000';
-      debugCtx.lineWidth = 2;
-      
-      // Define body connections (MediaPipe pose connections)
-      const connections = [
-        [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // Arms
-        [11, 23], [12, 24], [23, 24], // Torso
-        [23, 25], [25, 27], [24, 26], [26, 28], // Legs
-        [0, 1], [1, 2], [2, 3], [3, 7], // Head (simplified)
-      ];
-      
-      connections.forEach(([a, b]) => {
-        const pointA = landmarks[a];
-        const pointB = landmarks[b];
-        if (pointA && pointB && pointA.visibility > 0.5 && pointB.visibility > 0.5) {
-          debugCtx.beginPath();
-          debugCtx.moveTo(pointA.x * w, pointA.y * h);
-          debugCtx.lineTo(pointB.x * w, pointB.y * h);
-          debugCtx.stroke();
-        }
-      });
-      
-      } catch (error) {
-        console.error('Error drawing pose skeleton:', error);
-        // Don't let drawing errors break the detection loop
-      }
-    }
     
     function detectBow(landmarks) {
       // Bow detection based on real bowing posture analysis
@@ -494,12 +392,6 @@
           }
         }
         
-        // Only clear skeleton after many failures to keep it visible longer
-        // Never clear during routine setup/active states
-        if (showDebug && consecutiveFailures > 20 && routineState === ROUTINE_STATES.WAITING) {
-          debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-          console.log('Skeleton cleared due to many consecutive failures (waiting state only)');
-        }
         return;
       } else {
         // Successful pose detection - reset counters
@@ -510,24 +402,6 @@
 
       const landmarks = results.poseLandmarks;
       
-      // Always draw debug skeleton first (regardless of confidence or routine state)
-      if (showDebug) {
-        try {
-          drawPoseSkeleton(landmarks);
-          // Only log skeleton drawing during critical state transitions
-          if (routineState === ROUTINE_STATES.SETUP || Math.random() < 0.01) {
-            console.log('Skeleton drawn successfully during', routineState, 'state');
-          }
-        } catch (error) {
-          console.error('Error drawing skeleton during', routineState, ':', error);
-        }
-      } else if (debugCtx && debugCanvas.width > 0) {
-        try {
-          debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-        } catch (error) {
-          console.error('Error clearing skeleton:', error);
-        }
-      }
 
       // Map keypoints
       const leftHip = landmarks[23], rightHip = landmarks[24];
@@ -544,8 +418,7 @@
       }
 
       // Good pose detection
-      const skeletonStatus = showDebug ? `🧪${skeletonDrawCount}` : '';
-      poseStatus.textContent = `Pose: Tracking ✓ ${skeletonStatus}`;
+      poseStatus.textContent = 'Pose: Tracking ✓';
       poseStatus.style.color = '#4caf50';
       
       // Gesture detection for auto start/stop
@@ -555,9 +428,9 @@
           gestureHoldFrames++;
           poseStatus.textContent = `Salute detected... ${Math.round(100 * gestureHoldFrames / SALUTE_CONFIRM_FRAMES)}%`;
           poseStatus.style.color = '#4caf50';
-          console.log(`👋 SALUTE PROGRESS ${gestureHoldFrames}/${SALUTE_CONFIRM_FRAMES} - Skeleton should stay visible!`);
+          console.log(`👋 SALUTE PROGRESS ${gestureHoldFrames}/${SALUTE_CONFIRM_FRAMES}`);
           if (gestureHoldFrames >= SALUTE_CONFIRM_FRAMES) {
-            console.log('✅ SALUTE CONFIRMED - Starting routine! Skeleton should remain visible...');
+            console.log('✅ SALUTE CONFIRMED - Starting routine!');
             startRoutineAutomatically();
           }
         } else {
@@ -721,14 +594,8 @@
       gestureHoldFrames = 0;
       
       console.log('Routine state: SETUP → ACTIVE (deductions enabled)');
-      console.log('Skeleton should remain visible during transition to ACTIVE state');
       
       startBtn.disabled = true;
-      
-      // Ensure skeleton visibility is maintained during transition
-      if (showDebug && debugCtx) {
-        console.log('Debug mode active, skeleton should be visible');
-      }
       
       // Reset score & tracking
       score = 10.0;
@@ -875,18 +742,12 @@
       // Reset salute detection
       
       console.log('Routine state: WAITING → SETUP (waiting for salute, no deductions)');
-      console.log('Skeleton should remain visible during routine setup');
       
       startBtn.textContent = 'Waiting for Salute...';
       startBtn.disabled = true;
       
       poseStatus.textContent = 'Ready - Waiting for Salute';
       poseStatus.style.color = '#ff9800';
-      
-      // Ensure skeleton visibility is maintained
-      if (showDebug) {
-        console.log('Ready for routine - skeleton should remain visible');
-      }
       
       console.log('Gesture detection activated - raise one arm to salute and start routine');
       // Pose detection is already running continuously
@@ -896,14 +757,7 @@
 
     // Clear log functionality removed - using video replay instead
     
-    // Toggle debug overlay
-    toggleDebugBtn.addEventListener('click', () => {
-      showDebug = !showDebug;
-      toggleDebugBtn.textContent = showDebug ? 'Hide Pose Debug' : 'Show Pose Debug';
-      if (!showDebug) {
-        debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-      }
-    });
+    // Debug skeleton functionality removed
     
     // Close replay and reset for next routine
     closeReplayBtn.addEventListener('click', () => {
