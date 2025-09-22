@@ -104,10 +104,8 @@
     // Gesture detection
     let waitingForSalute = false;
     let waitingForBow = false;
-    let gestureHoldFrames = 0;
-    const GESTURE_HOLD_REQUIRED = 15; // ~0.25 seconds at 60fps (reduced for faster bow)
+    let gestureHoldFrames = 0; // Still used for salute
     const SALUTE_ARM_ANGLE_THRESHOLD = 45; // arms up angle
-    const BOW_TORSO_ANGLE_THRESHOLD = 30; // forward lean angle
     
     // Salute detection - simplified to immediate trigger
     const SALUTE_CONFIRM_FRAMES = 5; // ~0.08 seconds to confirm salute
@@ -320,48 +318,41 @@
       const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
       const hipY = (leftHip.y + rightHip.y) / 2;
       
-      // Primary bow detection: significant head drop (based on real bow image)
+      // Simple bow detection: significant head drop + arms not reaching equipment
       const headDrop = nose.y - shoulderY;
-      const moderateBow = headDrop > 0.04; // Realistic head drop for natural bow
-      const deepBow = headDrop > 0.08; // More obvious bow
+      const bowingDown = headDrop > 0.04; // Head dropped below shoulders = bow
       
-      // Secondary check: forward torso lean (shoulder-hip relationship)
-      const torsoLean = (shoulderY - hipY) < 0.18; // More forgiving than before (was 0.15)
-      
-      // Arm position check: prevent equipment reaching but allow natural hanging
-      let armsNatural = true;
+      // Only check: are arms reaching for equipment? If not, allow the bow
+      let armsAtSides = true;
       if (leftWrist && rightWrist && leftElbow && rightElbow) {
-        // In a natural bow, arms hang down but not extremely far (not reaching for equipment)
-        // Allow wrists to be below shoulders but not excessively so
-        const leftArmNatural = leftWrist.y <= leftShoulder.y + 0.25; // More generous
-        const rightArmNatural = rightWrist.y <= rightShoulder.y + 0.25;
+        // Block only if clearly reaching down for equipment (very generous thresholds)
+        const leftArmReaching = leftWrist.y > leftShoulder.y + 0.3; // Very generous
+        const rightArmReaching = rightWrist.y > rightShoulder.y + 0.3;
+        const leftElbowReaching = leftElbow.y > leftShoulder.y + 0.25;
+        const rightElbowReaching = rightElbow.y > rightShoulder.y + 0.25;
         
-        // Also check elbows aren't pointing way down (reaching gesture)
-        const leftElbowOK = leftElbow.y <= leftShoulder.y + 0.20;
-        const rightElbowOK = rightElbow.y <= rightShoulder.y + 0.20;
-        
-        armsNatural = leftArmNatural && rightArmNatural && leftElbowOK && rightElbowOK;
+        // Only block if BOTH arms AND elbows are reaching down significantly
+        const obviousReaching = (leftArmReaching && leftElbowReaching) || (rightArmReaching && rightElbowReaching);
+        armsAtSides = !obviousReaching;
       }
       
-      // Bow detection logic: head drop + natural arm position
-      // More flexible - either moderate bow with torso lean OR deep bow alone
-      const bowDetected = (moderateBow && torsoLean && armsNatural) || (deepBow && armsNatural);
+      // Bow detection: head down + not obviously reaching for equipment
+      const bowDetected = bowingDown && armsAtSides;
       
       const finalBowDetection = bowDetected;
       
       // Debug bow detection - show every time when routine is active and waiting for bow
       if (routineState === ROUTINE_STATES.ACTIVE && waitingForBow) {
-        console.log(`🏹 BOW CHECK - Nose:${nose.y.toFixed(3)} Shoulder:${shoulderY.toFixed(3)} Hip:${hipY.toFixed(3)}`);
-        console.log(`Head drop: ${headDrop.toFixed(3)} (moderate: ${headDrop.toFixed(3)} > 0.04 = ${moderateBow}, deep: ${headDrop.toFixed(3)} > 0.08 = ${deepBow})`);
-        console.log(`Torso lean (${shoulderY.toFixed(3)} - ${hipY.toFixed(3)} = ${(shoulderY - hipY).toFixed(3)} < 0.18): ${torsoLean}`);
-        console.log(`Arms natural (not reaching equipment): ${armsNatural}`);
+        console.log(`🏹 BOW CHECK - Nose:${nose.y.toFixed(3)} Shoulder:${shoulderY.toFixed(3)}`);
+        console.log(`Head drop: ${headDrop.toFixed(3)} (bowing down: ${headDrop.toFixed(3)} > 0.04 = ${bowingDown})`);
+        console.log(`Arms at sides (not reaching equipment): ${armsAtSides}`);
         if (leftWrist && rightWrist && leftElbow && rightElbow) {
           console.log(`Arm positions - LWrist:${leftWrist.y.toFixed(3)} RWrist:${rightWrist.y.toFixed(3)} LElbow:${leftElbow.y.toFixed(3)} RElbow:${rightElbow.y.toFixed(3)}`);
-          const leftWristOK = leftWrist.y <= leftShoulder.y + 0.25;
-          const rightWristOK = rightWrist.y <= rightShoulder.y + 0.25;
-          const leftElbowOK = leftElbow.y <= leftShoulder.y + 0.20;
-          const rightElbowOK = rightElbow.y <= rightShoulder.y + 0.20;
-          console.log(`Arm checks - LWrist OK: ${leftWristOK}, RWrist OK: ${rightWristOK}, LElbow OK: ${leftElbowOK}, RElbow OK: ${rightElbowOK}`);
+          const leftArmReaching = leftWrist.y > leftShoulder.y + 0.3;
+          const rightArmReaching = rightWrist.y > rightShoulder.y + 0.3;
+          const leftElbowReaching = leftElbow.y > leftShoulder.y + 0.25;
+          const rightElbowReaching = rightElbow.y > rightShoulder.y + 0.25;
+          console.log(`Reaching check - LArm: ${leftArmReaching}, RArm: ${rightArmReaching}, LElbow: ${leftElbowReaching}, RElbow: ${rightElbowReaching}`);
         }
         console.log(`✅ FINAL BOW DETECTION: ${finalBowDetection}`);
         console.log('---');
@@ -546,16 +537,9 @@
       } else if (routineState === ROUTINE_STATES.ACTIVE && waitingForBow) {
         const isBowing = detectBow(landmarks);
         if (isBowing) {
-          gestureHoldFrames++;
-          poseStatus.textContent = `Bow detected... ${Math.round(100 * gestureHoldFrames / GESTURE_HOLD_REQUIRED)}%`;
-          poseStatus.style.color = '#ff9800';
-          console.log(`Bow detected, holding for ${gestureHoldFrames}/${GESTURE_HOLD_REQUIRED} frames`);
-          if (gestureHoldFrames >= GESTURE_HOLD_REQUIRED) {
-            console.log('Bow confirmed - ending routine!');
-            endRoutineAutomatically();
-          }
+          console.log('Bow detected immediately - ending routine!');
+          endRoutineAutomatically();
         } else {
-          gestureHoldFrames = 0;
           if (routineState === ROUTINE_STATES.ACTIVE) {
             poseStatus.textContent = 'Routine Active - Bow to finish';
             poseStatus.style.color = '#ff9800';
