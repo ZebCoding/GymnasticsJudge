@@ -522,6 +522,108 @@
       
       return finalBowDetection;
     }
+    
+    function detectLegsApart(landmarks, hipDistance, ankleDist, kneeDist) {
+      // Pommel horse-specific legs apart detection
+      // Distinguishes between legs genuinely spread apart vs legs positioned behind apparatus
+      
+      const leftHip = landmarks[23], rightHip = landmarks[24];
+      const leftKnee = landmarks[25], rightKnee = landmarks[26];
+      const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
+      const leftShoulder = landmarks[11], rightShoulder = landmarks[12];
+      
+      if (!leftHip || !rightHip || !leftKnee || !rightKnee || !leftAnkle || !rightAnkle || !leftShoulder || !rightShoulder) {
+        return false;
+      }
+      
+      // Calculate body orientation and position context
+      const shoulderCenter = {x: (leftShoulder.x + rightShoulder.x) / 2, y: (leftShoulder.y + rightShoulder.y) / 2};
+      const hipCenter = {x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2};
+      const kneeCenter = {x: (leftKnee.x + rightKnee.x) / 2, y: (leftKnee.y + rightKnee.y) / 2};
+      const ankleCenter = {x: (leftAnkle.x + rightAnkle.x) / 2, y: (leftAnkle.y + rightAnkle.y) / 2};
+      
+      // Calculate body angle (torso orientation)
+      const bodyAngle = Math.atan2(shoulderCenter.y - hipCenter.y, shoulderCenter.x - hipCenter.x) * (180 / Math.PI);
+      
+      // Calculate leg spread metrics
+      const ankleRatio = ankleDist / hipDistance;
+      const kneeRatio = kneeDist / hipDistance;
+      const maxAnkleDistFactor = 1.3; // was 1.5 - more strict
+      const maxKneeDistFactor = 1.4;  // knee distance shouldn't exceed this either
+      const maxAbsoluteAnkleDist = 0.3; // normalized coordinate distance
+      
+      // Check if legs are genuinely spread laterally (side to side)
+      const significantSpread = (ankleRatio > maxAnkleDistFactor) || (kneeRatio > maxKneeDistFactor) || (ankleDist > maxAbsoluteAnkleDist);
+      
+      if (!significantSpread) {
+        // No significant spread detected
+        return false;
+      }
+      
+      // Now determine if this spread is due to legs being behind apparatus (normal) vs genuinely apart (penalty)
+      
+      // Method 1: Check if legs are positioned behind the torso (normal for pommel horse)
+      // If ankles are significantly behind hips in the direction of the body's orientation, it's likely behind apparatus
+      const legsBehindTorso = isLegsBehindTorso(shoulderCenter, hipCenter, kneeCenter, ankleCenter);
+      
+      // Method 2: Check lateral spread vs front-back spread
+      // Legs behind apparatus will show more front-back separation than true lateral separation
+      const lateralSpread = Math.abs(leftAnkle.x - rightAnkle.x);
+      const frontBackSpread = Math.abs(ankleCenter.y - hipCenter.y);
+      const isMainlyLateralSpread = lateralSpread > frontBackSpread * 0.7; // Lateral spread dominates
+      
+      // Method 3: Check leg alignment - truly apart legs will have knees and ankles both spread
+      // Legs behind apparatus may have ankles spread but knees closer together
+      const kneeSpread = Math.abs(leftKnee.x - rightKnee.x);
+      const ankleSpread = Math.abs(leftAnkle.x - rightAnkle.x);
+      const consistentSpread = ankleSpread > 0 && kneeSpread / ankleSpread > 0.5; // Knees also spread proportionally
+      
+      // Combine all methods to determine if legs are genuinely apart
+      const isGenuinelyApart = !legsBehindTorso && isMainlyLateralSpread && consistentSpread;
+      
+      // Debug logging for pommel horse context
+      if (Math.random() < 0.02) { // Occasional debugging
+        console.log(`🤸 LEGS ANALYSIS:`);
+        console.log(`  Spread ratios - Ankle: ${ankleRatio.toFixed(2)}, Knee: ${kneeRatio.toFixed(2)}, Absolute: ${ankleDist.toFixed(3)}`);
+        console.log(`  Body angle: ${bodyAngle.toFixed(1)}°`);
+        console.log(`  Legs behind torso: ${legsBehindTorso}`);
+        console.log(`  Lateral spread: ${(lateralSpread * 100).toFixed(1)}%, Front-back: ${(frontBackSpread * 100).toFixed(1)}%`);
+        console.log(`  Mainly lateral: ${isMainlyLateralSpread}, Consistent spread: ${consistentSpread}`);
+        console.log(`  RESULT: ${isGenuinelyApart ? 'GENUINELY APART (penalty)' : 'Behind apparatus (normal)'}`);
+      }
+      
+      return isGenuinelyApart;
+    }
+    
+    function isLegsBehindTorso(shoulderCenter, hipCenter, kneeCenter, ankleCenter) {
+      // Determine if legs are positioned behind the torso (normal for pommel horse)
+      // vs spread to the sides (penalty)
+      
+      // Calculate torso direction vector (from hips to shoulders)
+      const torsoDirection = {
+        x: shoulderCenter.x - hipCenter.x,
+        y: shoulderCenter.y - hipCenter.y
+      };
+      
+      // Calculate leg position vector (from hips to leg center)
+      const legDirection = {
+        x: ankleCenter.x - hipCenter.x,
+        y: ankleCenter.y - hipCenter.y
+      };
+      
+      // Calculate dot product to determine if legs are behind torso
+      const dotProduct = torsoDirection.x * legDirection.x + torsoDirection.y * legDirection.y;
+      
+      // If dot product is negative, legs are positioned opposite to torso direction (behind)
+      // Also check if the magnitude of leg displacement is significant
+      const legDisplacementMagnitude = Math.sqrt(legDirection.x * legDirection.x + legDirection.y * legDirection.y);
+      
+      // Legs are considered "behind torso" if they're displaced in opposite direction from shoulders
+      // and the displacement is significant (not just centered)
+      const legsBehind = dotProduct < 0 && legDisplacementMagnitude > 0.05;
+      
+      return legsBehind;
+    }
 
     // Setup MediaPipe Pose with error handling
     let pose;
@@ -770,44 +872,25 @@
           console.log(`Right leg close to bent: ${rightKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
         }
       }
-      // Multiple checks for legs too far apart - ONLY during ACTIVE routine state
+      // Pommel horse-aware legs apart detection - ONLY during ACTIVE routine state
       if (routineState === ROUTINE_STATES.ACTIVE) {
         const now = performance.now();
         const inMountingGrace = now < mountingGracePeriod;
         const inStepOffGrace = now < stepOffGracePeriod;
         const inAnyGrace = inMountingGrace || inStepOffGrace;
-        const ankleRatio = ankleDist / hipDistance;
-        const kneeRatio = kneeDist / hipDistance;
         
-        if (ankleRatio > maxAnkleDistFactor) {
+        // Check if this is actually legs apart vs legs behind apparatus
+        const isLegsApart = detectLegsApart(landmarks, hipDistance, ankleDist, kneeDist);
+        
+        if (isLegsApart) {
           if (!inMountingGrace) { // Only mounting grace allows legs apart, NOT step-off grace
-            console.log(`Legs apart (ankle ratio): ${ankleRatio.toFixed(2)} > ${maxAnkleDistFactor}`);
+            console.log(`Legs genuinely apart detected`);
             if (inStepOffGrace) {
               console.log(`During landing - legs must stay together!`);
             }
             addDeduction("Legs too far apart");
           } else {
-            console.log(`Legs apart during mounting - allowed (ankle ratio: ${ankleRatio.toFixed(2)})`);
-          }
-        } else if (kneeRatio > maxKneeDistFactor) {
-          if (!inMountingGrace) { // Only mounting grace allows legs apart, NOT step-off grace
-            console.log(`Legs apart (knee ratio): ${kneeRatio.toFixed(2)} > ${maxKneeDistFactor}`);
-            if (inStepOffGrace) {
-              console.log(`During landing - legs must stay together!`);
-            }
-            addDeduction("Legs too far apart");
-          } else {
-            console.log(`Legs apart during mounting - allowed (knee ratio: ${kneeRatio.toFixed(2)})`);
-          }
-        } else if (ankleDist > maxAbsoluteAnkleDist) {
-          if (!inMountingGrace) { // Only mounting grace allows legs apart, NOT step-off grace
-            console.log(`Legs apart (absolute): ${ankleDist.toFixed(3)} > ${maxAbsoluteAnkleDist}`);
-            if (inStepOffGrace) {
-              console.log(`During landing - legs must stay together!`);
-            }
-            addDeduction("Legs too far apart");
-          } else {
-            console.log(`Legs apart during mounting - allowed (absolute: ${ankleDist.toFixed(3)})`);
+            console.log(`Legs apart during mounting - allowed`);
           }
         }
       }
