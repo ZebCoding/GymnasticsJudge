@@ -263,6 +263,11 @@
       FINISHED: 'finished'    // After bow, routine complete (no more deductions)
     };
     let routineState = ROUTINE_STATES.WAITING;
+    
+    // Ground contact detection for intelligent deduction logic
+    let hasEverBeenAirborne = false; // Has gymnast ever had both feet off ground?
+    let currentlyGrounded = true;    // Are both feet currently on ground?
+    let lastGroundCheckTime = 0;     // Prevent too frequent ground checks
 
     // Control repeated deductions: per-reason cooldown in milliseconds
     const DEDUCTION_COOLDOWN_MS = 1000; // 1 second cooldown
@@ -523,106 +528,124 @@
       return finalBowDetection;
     }
     
-    function detectLegsApart(landmarks, hipDistance, ankleDist, kneeDist) {
-      // Pommel horse-specific legs apart detection
-      // Distinguishes between legs genuinely spread apart vs legs positioned behind apparatus
-      
-      const leftHip = landmarks[23], rightHip = landmarks[24];
-      const leftKnee = landmarks[25], rightKnee = landmarks[26];
+    function detectGroundContact(landmarks) {
+      // Detect if gymnast's feet are on the ground or airborne
       const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
-      const leftShoulder = landmarks[11], rightShoulder = landmarks[12];
+      const leftHip = landmarks[23], rightHip = landmarks[24];
       
-      if (!leftHip || !rightHip || !leftKnee || !rightKnee || !leftAnkle || !rightAnkle || !leftShoulder || !rightShoulder) {
-        return false;
+      if (!leftAnkle || !rightAnkle || !leftHip || !rightHip) {
+        return { grounded: true, confidence: 'low' }; // Assume grounded if can't see feet
       }
       
-      // Calculate body orientation and position context
-      const shoulderCenter = {x: (leftShoulder.x + rightShoulder.x) / 2, y: (leftShoulder.y + rightShoulder.y) / 2};
-      const hipCenter = {x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2};
-      const kneeCenter = {x: (leftKnee.x + rightKnee.x) / 2, y: (leftKnee.y + rightKnee.y) / 2};
-      const ankleCenter = {x: (leftAnkle.x + rightAnkle.x) / 2, y: (leftAnkle.y + rightAnkle.y) / 2};
+      // Calculate if feet appear to be on ground based on body proportions
+      const hipY = (leftHip.y + rightHip.y) / 2;
+      const ankleY = (leftAnkle.y + rightAnkle.y) / 2;
       
-      // Calculate body angle (torso orientation)
-      const bodyAngle = Math.atan2(shoulderCenter.y - hipCenter.y, shoulderCenter.x - hipCenter.x) * (180 / Math.PI);
+      // If ankles are significantly below hips, likely on ground
+      // If ankles are close to hip level, likely airborne
+      const legLength = ankleY - hipY;
+      const isGrounded = legLength > 0.15; // Threshold for ground contact
       
-      // Calculate leg spread metrics
-      const ankleRatio = ankleDist / hipDistance;
-      const kneeRatio = kneeDist / hipDistance;
-      const maxAnkleDistFactor = 1.3; // was 1.5 - more strict
-      const maxKneeDistFactor = 1.4;  // knee distance shouldn't exceed this either
-      const maxAbsoluteAnkleDist = 0.3; // normalized coordinate distance
+      // Check visibility confidence
+      const leftVis = leftAnkle.visibility || 1;
+      const rightVis = rightAnkle.visibility || 1;
+      const avgVisibility = (leftVis + rightVis) / 2;
+      const confidence = avgVisibility > 0.7 ? 'high' : 'low';
       
-      // Check if legs are genuinely spread laterally (side to side)
-      const significantSpread = (ankleRatio > maxAnkleDistFactor) || (kneeRatio > maxKneeDistFactor) || (ankleDist > maxAbsoluteAnkleDist);
-      
-      if (!significantSpread) {
-        // No significant spread detected
-        return false;
-      }
-      
-      // Now determine if this spread is due to legs being behind apparatus (normal) vs genuinely apart (penalty)
-      
-      // Method 1: Check if legs are positioned behind the torso (normal for pommel horse)
-      // If ankles are significantly behind hips in the direction of the body's orientation, it's likely behind apparatus
-      const legsBehindTorso = isLegsBehindTorso(shoulderCenter, hipCenter, kneeCenter, ankleCenter);
-      
-      // Method 2: Check lateral spread vs front-back spread
-      // Legs behind apparatus will show more front-back separation than true lateral separation
-      const lateralSpread = Math.abs(leftAnkle.x - rightAnkle.x);
-      const frontBackSpread = Math.abs(ankleCenter.y - hipCenter.y);
-      const isMainlyLateralSpread = lateralSpread > frontBackSpread * 0.7; // Lateral spread dominates
-      
-      // Method 3: Check leg alignment - truly apart legs will have knees and ankles both spread
-      // Legs behind apparatus may have ankles spread but knees closer together
-      const kneeSpread = Math.abs(leftKnee.x - rightKnee.x);
-      const ankleSpread = Math.abs(leftAnkle.x - rightAnkle.x);
-      const consistentSpread = ankleSpread > 0 && kneeSpread / ankleSpread > 0.5; // Knees also spread proportionally
-      
-      // Combine all methods to determine if legs are genuinely apart
-      const isGenuinelyApart = !legsBehindTorso && isMainlyLateralSpread && consistentSpread;
-      
-      // Debug logging for pommel horse context
-      if (Math.random() < 0.02) { // Occasional debugging
-        console.log(`🤸 LEGS ANALYSIS:`);
-        console.log(`  Spread ratios - Ankle: ${ankleRatio.toFixed(2)}, Knee: ${kneeRatio.toFixed(2)}, Absolute: ${ankleDist.toFixed(3)}`);
-        console.log(`  Body angle: ${bodyAngle.toFixed(1)}°`);
-        console.log(`  Legs behind torso: ${legsBehindTorso}`);
-        console.log(`  Lateral spread: ${(lateralSpread * 100).toFixed(1)}%, Front-back: ${(frontBackSpread * 100).toFixed(1)}%`);
-        console.log(`  Mainly lateral: ${isMainlyLateralSpread}, Consistent spread: ${consistentSpread}`);
-        console.log(`  RESULT: ${isGenuinelyApart ? 'GENUINELY APART (penalty)' : 'Behind apparatus (normal)'}`);
-      }
-      
-      return isGenuinelyApart;
+      return { grounded: isGrounded, confidence: confidence };
     }
     
-    function isLegsBehindTorso(shoulderCenter, hipCenter, kneeCenter, ankleCenter) {
-      // Determine if legs are positioned behind the torso (normal for pommel horse)
-      // vs spread to the sides (penalty)
+    function shouldApplyDeductions(landmarks) {
+      // Determine deduction rules based on ground contact and visibility
+      // 4 SCENARIOS FOR LEG CHECKING:
+      // 1. Legs off ground AND visible → Check bending (penalize), Check spreading (penalize) 
+      // 2. Legs behind pommel (not visible) → No checks (assume proper form)
+      // 3. Beginning (mounting) → Check bending (allow), Check spreading (allow)
+      // 4. Landed after routine → Check bending (allow), Check spreading (penalize)
       
-      // Calculate torso direction vector (from hips to shoulders)
-      const torsoDirection = {
-        x: shoulderCenter.x - hipCenter.x,
-        y: shoulderCenter.y - hipCenter.y
-      };
+      const now = performance.now();
       
-      // Calculate leg position vector (from hips to leg center)
-      const legDirection = {
-        x: ankleCenter.x - hipCenter.x,
-        y: ankleCenter.y - hipCenter.y
-      };
+      // Only check ground contact every 100ms to avoid excessive processing
+      if (now - lastGroundCheckTime > 100) {
+        const groundStatus = detectGroundContact(landmarks);
+        currentlyGrounded = groundStatus.grounded;
+        lastGroundCheckTime = now;
+        
+        // Track if gymnast has ever been airborne (both feet off ground)
+        if (!currentlyGrounded && !hasEverBeenAirborne) {
+          hasEverBeenAirborne = true;
+          console.log('🚁 Gymnast is now airborne - strict deduction rules now apply when visible');
+        }
+        
+        // Debug ground contact occasionally
+        if (Math.random() < 0.01) {
+          console.log(`👣 Ground contact: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, Ever airborne: ${hasEverBeenAirborne}, Confidence: ${groundStatus.confidence}`);
+        }
+      }
       
-      // Calculate dot product to determine if legs are behind torso
-      const dotProduct = torsoDirection.x * legDirection.x + torsoDirection.y * legDirection.y;
+      // Check if legs are clearly visible for reliable deduction detection
+      const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
+      const leftKnee = landmarks[25], rightKnee = landmarks[26];
+      const leftHip = landmarks[23], rightHip = landmarks[24];
       
-      // If dot product is negative, legs are positioned opposite to torso direction (behind)
-      // Also check if the magnitude of leg displacement is significant
-      const legDisplacementMagnitude = Math.sqrt(legDirection.x * legDirection.x + legDirection.y * legDirection.y);
+      const legLandmarks = [leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle];
+      const visibleLegCount = legLandmarks.filter(lm => lm && (lm.visibility || 1) > 0.6).length;
+      const legsVisible = visibleLegCount >= 4; // Need at least 4 of 6 leg landmarks visible
       
-      // Legs are considered "behind torso" if they're displaced in opposite direction from shoulders
-      // and the displacement is significant (not just centered)
-      const legsBehind = dotProduct < 0 && legDisplacementMagnitude > 0.05;
+      if (!legsVisible) {
+        // When legs aren't clearly visible (behind pommel horse), assume proper form
+        if (Math.random() < 0.01) {
+          console.log('🙈 Legs not clearly visible - assuming proper form (no deductions)');
+        }
+        return {
+          checkBending: false,
+          checkSpreading: false,
+          reason: 'legs not visible - assumed proper'
+        };
+      }
       
-      return legsBehind;
+      // Apply deduction rules based on ground contact and routine progress
+      if (!hasEverBeenAirborne) {
+        // Beginning phase - mounting grace period
+        return {
+          checkBending: false,
+          checkSpreading: false,
+          reason: 'mounting phase - grace period'
+        };
+      } else if (!currentlyGrounded) {
+        // Airborne - strict rules apply
+        return {
+          checkBending: true,
+          checkSpreading: true,
+          reason: 'airborne - strict rules'
+        };
+      } else {
+        // Landed after being airborne - allow bending but not spreading
+        return {
+          checkBending: false,
+          checkSpreading: true,
+          reason: 'landed - allow bending, no spreading'
+        };
+      }
+    }
+    
+    function detectLegsApart(landmarks, hipDistance, ankleDist, kneeDist) {
+      // Simple legs apart detection when rules require it
+      const ankleRatio = ankleDist / hipDistance;
+      const kneeRatio = kneeDist / hipDistance;
+      const maxAnkleDistFactor = 1.4; // Allow slightly more tolerance
+      const maxKneeDistFactor = 1.5;
+      const maxAbsoluteAnkleDist = 0.25; // normalized coordinate distance
+      
+      const isApart = (ankleRatio > maxAnkleDistFactor) || 
+                      (kneeRatio > maxKneeDistFactor) || 
+                      (ankleDist > maxAbsoluteAnkleDist);
+      
+      if (isApart && Math.random() < 0.02) {
+        console.log(`🦵 Legs apart detected - Ankle ratio: ${ankleRatio.toFixed(2)}, Knee ratio: ${kneeRatio.toFixed(2)}, Absolute: ${ankleDist.toFixed(3)}`);
+      }
+      
+      return isApart;
     }
 
     // Setup MediaPipe Pose with error handling
@@ -833,66 +856,50 @@
       // Also check absolute distance (for very wide stances)
       const maxAbsoluteAnkleDist = 0.3; // normalized coordinate distance
 
-      // Check deductions with debugging - ONLY during ACTIVE routine state
+      // Ground contact-based deduction logic - ONLY during ACTIVE routine state
       if (routineState === ROUTINE_STATES.ACTIVE) {
-        const now = performance.now();
-        const inMountingGrace = now < mountingGracePeriod;
-        const inStepOffGrace = now < stepOffGracePeriod;
-        const inAnyGrace = inMountingGrace || inStepOffGrace;
+        const deductionRules = shouldApplyDeductions(landmarks);
         
-        if (inMountingGrace && Math.random() < 0.02) { // Occasional logging during grace period
-          console.log(`Mounting grace period active - ${((mountingGracePeriod - now)/1000).toFixed(1)}s remaining`);
-        }
-        if (inStepOffGrace && Math.random() < 0.02) { // Occasional logging during grace period
-          console.log(`Step-off grace period active - ${((stepOffGracePeriod - now)/1000).toFixed(1)}s remaining`);
+        // Debug the current deduction rules occasionally
+        if (Math.random() < 0.01) {
+          console.log(`🎯 Deduction rules: ${deductionRules.reason}`);
+          console.log(`  Check bending: ${deductionRules.checkBending}, Check spreading: ${deductionRules.checkSpreading}`);
         }
         
-        if (leftKneeAngle < kneeThreshold) {
-          if (!inAnyGrace) {
-            console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
+        // Apply leg bending deductions only when rules require it
+        if (deductionRules.checkBending) {
+          if (leftKneeAngle < kneeThreshold) {
+            console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}° (${deductionRules.reason})`);
             addDeduction("Left leg bent");
-          } else {
-            const graceType = inMountingGrace ? 'mounting' : 'step-off/landing';
-            console.log(`Left leg bent during ${graceType} - allowed (${leftKneeAngle.toFixed(1)}°)`);
           }
-        } else if (leftKneeAngle < kneeThreshold + 5) {
-          // Log near-misses to see if angles are fluctuating around threshold
-          console.log(`Left leg close to bent: ${leftKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
-        }
-        
-        if (rightKneeAngle < kneeThreshold) {
-          if (!inAnyGrace) {
-            console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}°`);
+          
+          if (rightKneeAngle < kneeThreshold) {
+            console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}° (${deductionRules.reason})`);
             addDeduction("Right leg bent");
-          } else {
-            const graceType = inMountingGrace ? 'mounting' : 'step-off/landing';
-            console.log(`Right leg bent during ${graceType} - allowed (${rightKneeAngle.toFixed(1)}°)`);
           }
-        } else if (rightKneeAngle < kneeThreshold + 5) {
-          console.log(`Right leg close to bent: ${rightKneeAngle.toFixed(1)}° (threshold: ${kneeThreshold}°)`);
+        } else {
+          // Log when bending is allowed
+          if ((leftKneeAngle < kneeThreshold || rightKneeAngle < kneeThreshold) && Math.random() < 0.01) {
+            console.log(`Leg bending detected but allowed: ${deductionRules.reason}`);
+          }
         }
-      }
-      // Pommel horse-aware legs apart detection - ONLY during ACTIVE routine state
-      if (routineState === ROUTINE_STATES.ACTIVE) {
-        const now = performance.now();
-        const inMountingGrace = now < mountingGracePeriod;
-        const inStepOffGrace = now < stepOffGracePeriod;
-        const inAnyGrace = inMountingGrace || inStepOffGrace;
         
-        // Check if this is actually legs apart vs legs behind apparatus
+        // Always check for legs apart (but apply different rules based on scenario)
         const isLegsApart = detectLegsApart(landmarks, hipDistance, ankleDist, kneeDist);
         
         if (isLegsApart) {
-          if (!inMountingGrace) { // Only mounting grace allows legs apart, NOT step-off grace
-            console.log(`Legs genuinely apart detected`);
-            if (inStepOffGrace) {
-              console.log(`During landing - legs must stay together!`);
-            }
+          if (deductionRules.checkSpreading) {
+            // Scenario 1 or 4: Penalize legs apart
+            console.log(`Legs apart detected - PENALIZED: ${deductionRules.reason}`);
             addDeduction("Legs too far apart");
           } else {
-            console.log(`Legs apart during mounting - allowed`);
+            // Scenario 3: Mounting grace - detect but don't penalize
+            if (Math.random() < 0.01) {
+              console.log(`Legs apart detected but ALLOWED: ${deductionRules.reason}`);
+            }
           }
         }
+        // Note: Scenario 2 (legs behind pommel/not visible) is handled in shouldApplyDeductions()
       }
       
       // Step-off detection - detect when gymnast steps off mushroom
@@ -1168,8 +1175,14 @@
       lastValidPositionTime = 0;
       circleCount = 0;
       circleCountDisplay.textContent = 'Circles: 0';
+      
+      // Reset ground contact tracking
+      hasEverBeenAirborne = false;
+      currentlyGrounded = true;
+      lastGroundCheckTime = 0;
+      
       console.log('Routine start time recorded for video timing');
-      console.log('5-second mounting grace period active - legs apart allowed for pommel mount');
+      console.log('Ground contact-based deduction system initialized');
       
       // Setup MediaRecorder
       recordedChunks = []; // Clear previous recording
