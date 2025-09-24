@@ -1065,31 +1065,34 @@
     function detectCircles(landmarks) {
       if (routineState !== ROUTINE_STATES.ACTIVE) return;
       
-      // Calculate body angle using shoulders and hips
-      const leftShoulder = landmarks[11];
-      const rightShoulder = landmarks[12];
+      // For pommel horse circles: track hip position around apparatus center
+      // Gymnast's body rotates 360° while chest stays forward
       const leftHip = landmarks[23];
       const rightHip = landmarks[24];
+      const leftShoulder = landmarks[11];
+      const rightShoulder = landmarks[12];
       
       // Check if we have all required landmarks
-      if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) {
+      if (!leftHip || !rightHip || !leftShoulder || !rightShoulder) {
         return;
       }
       
-      // Calculate center points
-      const shoulderCenter = {
-        x: (leftShoulder.x + rightShoulder.x) / 2,
-        y: (leftShoulder.y + rightShoulder.y) / 2
-      };
+      // Calculate hip center (this rotates around the mushroom)
       const hipCenter = {
         x: (leftHip.x + rightHip.x) / 2,
         y: (leftHip.y + rightHip.y) / 2
       };
       
-      // Calculate angle of the body (torso line) relative to horizontal
-      // This represents the gymnast's position around the pommel horse
-      const deltaX = shoulderCenter.x - hipCenter.x;
-      const deltaY = shoulderCenter.y - hipCenter.y;
+      // Use shoulder center as apparatus reference point (hands support here)
+      const shoulderCenter = {
+        x: (leftShoulder.x + rightShoulder.x) / 2,
+        y: (leftShoulder.y + rightShoulder.y) / 2
+      };
+      
+      // Calculate angle of hips relative to shoulder center (apparatus)
+      // This tracks the body's rotation around the pommel horse
+      const deltaX = hipCenter.x - shoulderCenter.x;
+      const deltaY = hipCenter.y - shoulderCenter.y;
       let currentAngle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
       
       // Normalize angle to 0-360 degrees
@@ -1112,6 +1115,11 @@
         if (Math.abs(angleDiff) > 5 && Math.abs(angleDiff) < 90) {
           totalRotation += Math.abs(angleDiff);
           lastValidPositionTime = now;
+          
+          // Debug circle progress occasionally
+          if (Math.random() < 0.02) {
+            console.log(`🔄 Circle progress: ${totalRotation.toFixed(1)}°/360° (${(totalRotation/360*100).toFixed(1)}%)`);
+          }
           
           // Check if we've completed a full circle (360 degrees)
           if (totalRotation >= 360) {
