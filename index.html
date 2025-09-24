@@ -1397,15 +1397,20 @@
       
       // TESTING ONLY: Skip recording in video file mode - REMOVE AFTER TESTING
       if (mediaStream) {
-        mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/webm" });
-        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = () => {
-          // Store video blob for replay instead of downloading
-          recordedVideoBlob = new Blob(recordedChunks, { type: "video/webm" });
-          console.log('Video recorded, starting replay system');
-          startReplay();
-        };
-        mediaRecorder.start();
+        try {
+          mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/webm" });
+          mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+          mediaRecorder.onstop = () => {
+            // Store video blob for replay instead of downloading
+            recordedVideoBlob = new Blob(recordedChunks, { type: "video/webm" });
+            console.log('Video recorded, starting replay system');
+            startReplay();
+          };
+          mediaRecorder.start();
+        } catch (error) {
+          console.error('MediaRecorder failed:', error);
+          console.log('🎬 Continuing without recording for testing');
+        }
       } else {
         console.log('🎬 Test video mode: Recording disabled for testing');
       }
