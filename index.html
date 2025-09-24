@@ -995,34 +995,38 @@
         const legLength = ankleY - hipY;
         const feetOnGround = legLength > 0.2; // Generous threshold for ground contact
         
-        // Only consider step-off if: big horizontal shift AND feet appear to be on ground
+        // For fast pommel horse circles: detect sustained ground contact, not time-based
         if (horizontalShift > shiftThreshold && feetOnGround) {
-          // Wait for confirmation - must stay shifted for 3 seconds  
-          if (!window.potentialStepOffTime) {
-            window.potentialStepOffTime = now;
-            console.log(`🕰️ Potential dismount detected (shift: ${(horizontalShift*100).toFixed(1)}%, feet down), waiting for confirmation...`);
-          } else if (now - window.potentialStepOffTime > 3000) {
-            // Confirmed step-off
-            hasSteppedOff = true;
-            stepOffGracePeriod = now + 5000; // 5 second grace period for landing/bow sequence
-            window.potentialStepOffTime = null;
+          // Track consecutive frames with both conditions met
+          if (!window.dismountFrameCount) {
+            window.dismountFrameCount = 1;
+            console.log(`🕰️ Potential dismount detected (shift: ${(horizontalShift*100).toFixed(1)}%, feet down), counting frames...`);
+          } else {
+            window.dismountFrameCount++;
             
-            // Record landing position for step detection
-            landingPosition = {
-              x: currentCenterX,
-              y: (hipCenterX + ankleCenterX) / 2,
-              time: now
-            };
-            
-            console.log(`🚁 CONFIRMED DISMOUNT! Moved ${(horizontalShift * 100).toFixed(1)}% with feet on ground - starting landing grace period`);
-            console.log(`Dismount detected at ${routineTime.toFixed(1)}s into routine`);
+            // Need 15 consecutive frames (about 1 second at 15fps) of sustained contact
+            if (window.dismountFrameCount >= 15) {
+              hasSteppedOff = true;
+              stepOffGracePeriod = now + 5000; // 5 second grace period for landing/bow sequence
+              window.dismountFrameCount = 0;
+              
+              // Record landing position for step detection
+              landingPosition = {
+                x: currentCenterX,
+                y: (hipCenterX + ankleCenterX) / 2,
+                time: now
+              };
+              
+              console.log(`🚁 CONFIRMED DISMOUNT! ${window.dismountFrameCount} frames of sustained ground contact - starting landing grace period`);
+              console.log(`Dismount detected at ${routineTime.toFixed(1)}s into routine`);
+            }
           }
         } else {
-          // Reset potential step-off if conditions not met
-          if (window.potentialStepOffTime) {
-            const reason = !feetOnGround ? 'feet still airborne' : 'back near baseline';
-            console.log(`🔙 Dismount cancelled - ${reason}`);
-            window.potentialStepOffTime = null;
+          // Reset frame counter if conditions not met
+          if (window.dismountFrameCount > 0) {
+            const reason = !feetOnGround ? 'feet airborne again' : 'back near baseline';
+            console.log(`🔙 Dismount cancelled after ${window.dismountFrameCount} frames - ${reason}`);
+            window.dismountFrameCount = 0;
           }
         }
       }
@@ -1311,7 +1315,7 @@
       baselineCenterX = null;
       stepOffGracePeriod = 0;
       hasSteppedOff = false;
-      window.potentialStepOffTime = null;
+      window.dismountFrameCount = 0;
       
       // Reset landing step detection
       landingPosition = null;
@@ -1558,7 +1562,7 @@
       baselineCenterX = null;
       stepOffGracePeriod = 0;
       hasSteppedOff = false;
-      window.potentialStepOffTime = null;
+      window.dismountFrameCount = 0;
       
       // Reset landing step detection variables
       landingPosition = null;
