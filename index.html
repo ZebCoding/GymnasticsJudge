@@ -1091,8 +1091,8 @@
     function detectCircles(landmarks) {
       if (routineState !== ROUTINE_STATES.ACTIVE) return;
       
-      // For pommel horse circles: track hip position around apparatus center
-      // Gymnast's body rotates 360° while chest stays forward
+      // Fast pommel horse circle detection: track return to start position
+      // Each complete rotation back to starting position = 1 circle
       const leftHip = landmarks[23];
       const rightHip = landmarks[24];
       const leftShoulder = landmarks[11];
@@ -1116,7 +1116,6 @@
       };
       
       // Calculate angle of hips relative to shoulder center (apparatus)
-      // This tracks the body's rotation around the pommel horse
       const deltaX = hipCenter.x - shoulderCenter.x;
       const deltaY = hipCenter.y - shoulderCenter.y;
       let currentAngle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
@@ -1126,36 +1125,43 @@
       
       const now = performance.now();
       
+      // Initialize starting angle on first detection
+      if (window.circleStartAngle === undefined) {
+        window.circleStartAngle = currentAngle;
+        window.hasPassedHalfway = false;
+        console.log(`🎯 Circle detection initialized at ${currentAngle.toFixed(1)}°`);
+      }
+      
       if (lastAngle !== null) {
-        // Calculate the shortest angular distance
+        // Calculate angular difference
         let angleDiff = currentAngle - lastAngle;
         
-        // Handle wrap-around (360° to 0° and vice versa)
+        // Handle wrap-around
         if (angleDiff > 180) {
           angleDiff -= 360;
         } else if (angleDiff < -180) {
           angleDiff += 360;
         }
         
-        // Debug angle changes occasionally
-        if (Math.random() < 0.01) {
-          console.log(`🎯 Angle: ${currentAngle.toFixed(1)}°, Diff: ${angleDiff.toFixed(1)}°, Total: ${totalRotation.toFixed(1)}°`);
-        }
-        
-        // Only count significant movements (filter out noise)
-        if (Math.abs(angleDiff) > 5 && Math.abs(angleDiff) < 90) {
+        // Only count significant movements
+        if (Math.abs(angleDiff) > 3 && Math.abs(angleDiff) < 120) {
           totalRotation += Math.abs(angleDiff);
           lastValidPositionTime = now;
           
-          // Debug circle progress occasionally
-          if (Math.random() < 0.02) {
-            console.log(`🔄 Circle progress: ${totalRotation.toFixed(1)}°/360° (${(totalRotation/360*100).toFixed(1)}%)`);
+          // Track if we've passed the halfway point (180° from start)
+          const angleFromStart = Math.abs(currentAngle - window.circleStartAngle);
+          const angleFromStartNormalized = angleFromStart > 180 ? 360 - angleFromStart : angleFromStart;
+          
+          if (angleFromStartNormalized > 120 && !window.hasPassedHalfway) {
+            window.hasPassedHalfway = true;
+            console.log(`🔄 Halfway through circle (${angleFromStartNormalized.toFixed(1)}° from start)`);
           }
           
-          // Check if we've completed a full circle (360 degrees)
-          if (totalRotation >= 360) {
+          // Check if we've returned to starting position after going halfway
+          if (window.hasPassedHalfway && angleFromStartNormalized < 30) {
+            // Complete circle detected!
             circleCount++;
-            totalRotation = 0; // Reset for next circle
+            console.log(`🎯 Circle ${circleCount} COMPLETED! Returned to start position`);
             
             // Apply deduction for completed circle based on worst mistakes
             if (routineState === ROUTINE_STATES.ACTIVE) {
@@ -1167,19 +1173,30 @@
               currentCircleStartTime = now;
             }
             
-            // Update display during live routine (will also show in replay)
+            // Reset for next circle detection
+            window.circleStartAngle = currentAngle;
+            window.hasPassedHalfway = false;
+            totalRotation = 0;
+            
+            // Update display
             circleCountDisplay.textContent = `Circles: ${circleCount}`;
-            console.log(`🎯 Circle ${circleCount} completed at ${((now - routineStartTime) / 1000).toFixed(1)}s into routine`);
+          }
+          
+          // Debug occasionally
+          if (Math.random() < 0.01) {
+            console.log(`🎯 Angle: ${currentAngle.toFixed(1)}°, From start: ${angleFromStartNormalized.toFixed(1)}°, Halfway: ${window.hasPassedHalfway}`);
           }
         }
       }
       
       lastAngle = currentAngle;
       
-      // Reset tracking if no movement for too long (gymnast may have stopped)
-      if (now - lastValidPositionTime > 10000) { // 10 seconds of no significant movement
-        if (totalRotation > 0) {
-          console.log(`Circle tracking reset due to lack of movement (was at ${totalRotation.toFixed(1)}°)`);
+      // Reset if no movement for too long
+      if (now - lastValidPositionTime > 5000) {
+        if (window.circleStartAngle !== undefined) {
+          console.log('Circle tracking reset due to lack of movement');
+          window.circleStartAngle = undefined;
+          window.hasPassedHalfway = false;
           totalRotation = 0;
         }
       }
@@ -1327,6 +1344,10 @@
       lastValidPositionTime = 0;
       circleCount = 0;
       circleCountDisplay.textContent = 'Circles: 0';
+      
+      // Reset fast circle detection
+      window.circleStartAngle = undefined;
+      window.hasPassedHalfway = false;
       
       // Reset ground contact tracking
       hasEverBeenAirborne = false;
@@ -1573,6 +1594,10 @@
       totalRotation = 0;
       lastValidPositionTime = 0;
       circleCountDisplay.textContent = 'Circles: 0';
+      
+      // Reset fast circle detection
+      window.circleStartAngle = undefined;
+      window.hasPassedHalfway = false;
       
       // Reset circle-based deduction tracking
       currentCircleStartTime = 0;
