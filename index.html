@@ -984,19 +984,24 @@
       }
       
       // After 10 seconds, check for significant horizontal movement (stepping off to side)
-      // But be more careful - circles involve movement around apparatus
+      // Account for hand releases during circles - this is normal pommel horse technique
       if (baselineCenterX !== null && !hasSteppedOff) {
         const horizontalShift = Math.abs(currentCenterX - baselineCenterX);
-        const shiftThreshold = 0.25; // Increased threshold - circles involve lateral movement
+        const shiftThreshold = 0.35; // Higher threshold - hand releases cause major shifts
         
-        // Additional check: make sure this is sustained movement, not just circle rotation
-        // Only consider it stepping off if consistently away from baseline
-        if (horizontalShift > shiftThreshold) {
-          // Wait for confirmation - must stay shifted for 2 seconds
+        // Additional check: are feet on ground? Real dismount = feet touch ground
+        const hipY = (leftHip.y + rightHip.y) / 2;
+        const ankleY = (leftAnkle.y + rightAnkle.y) / 2;
+        const legLength = ankleY - hipY;
+        const feetOnGround = legLength > 0.2; // Generous threshold for ground contact
+        
+        // Only consider step-off if: big horizontal shift AND feet appear to be on ground
+        if (horizontalShift > shiftThreshold && feetOnGround) {
+          // Wait for confirmation - must stay shifted for 3 seconds  
           if (!window.potentialStepOffTime) {
             window.potentialStepOffTime = now;
-            console.log(`🕰️ Potential step-off detected, waiting for confirmation...`);
-          } else if (now - window.potentialStepOffTime > 2000) {
+            console.log(`🕰️ Potential dismount detected (shift: ${(horizontalShift*100).toFixed(1)}%, feet down), waiting for confirmation...`);
+          } else if (now - window.potentialStepOffTime > 3000) {
             // Confirmed step-off
             hasSteppedOff = true;
             stepOffGracePeriod = now + 5000; // 5 second grace period for landing/bow sequence
@@ -1009,13 +1014,14 @@
               time: now
             };
             
-            console.log(`🚁 CONFIRMED STEP-OFF! Moved ${(horizontalShift * 100).toFixed(1)}% to side - starting 5s landing grace period`);
-            console.log(`Step-off detected at ${routineTime.toFixed(1)}s into routine`);
+            console.log(`🚁 CONFIRMED DISMOUNT! Moved ${(horizontalShift * 100).toFixed(1)}% with feet on ground - starting landing grace period`);
+            console.log(`Dismount detected at ${routineTime.toFixed(1)}s into routine`);
           }
         } else {
-          // Reset potential step-off if back near baseline
+          // Reset potential step-off if conditions not met
           if (window.potentialStepOffTime) {
-            console.log(`🔙 Back to baseline position - step-off cancelled`);
+            const reason = !feetOnGround ? 'feet still airborne' : 'back near baseline';
+            console.log(`🔙 Dismount cancelled - ${reason}`);
             window.potentialStepOffTime = null;
           }
         }
