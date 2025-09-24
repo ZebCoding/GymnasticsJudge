@@ -984,24 +984,40 @@
       }
       
       // After 10 seconds, check for significant horizontal movement (stepping off to side)
+      // But be more careful - circles involve movement around apparatus
       if (baselineCenterX !== null && !hasSteppedOff) {
         const horizontalShift = Math.abs(currentCenterX - baselineCenterX);
-        const shiftThreshold = 0.15; // Significant movement to side indicates step-off
+        const shiftThreshold = 0.25; // Increased threshold - circles involve lateral movement
         
+        // Additional check: make sure this is sustained movement, not just circle rotation
+        // Only consider it stepping off if consistently away from baseline
         if (horizontalShift > shiftThreshold) {
-          hasSteppedOff = true;
-          stepOffGracePeriod = now + 5000; // 5 second grace period for landing/bow sequence
-          
-          // Record landing position for step detection
-          landingPosition = {
-            x: currentCenterX,
-            y: (hipCenterX + ankleCenterX) / 2, // Use both x and y for more accurate step detection
-            time: now
-          };
-          
-          console.log(`🚶 STEP-OFF DETECTED! Moved ${(horizontalShift * 100).toFixed(1)}% to side - starting 5s landing grace period`);
-          console.log(`Step-off detected at ${routineTime.toFixed(1)}s into routine`);
-          console.log(`Landing position recorded for step detection`);
+          // Wait for confirmation - must stay shifted for 2 seconds
+          if (!window.potentialStepOffTime) {
+            window.potentialStepOffTime = now;
+            console.log(`🕰️ Potential step-off detected, waiting for confirmation...`);
+          } else if (now - window.potentialStepOffTime > 2000) {
+            // Confirmed step-off
+            hasSteppedOff = true;
+            stepOffGracePeriod = now + 5000; // 5 second grace period for landing/bow sequence
+            window.potentialStepOffTime = null;
+            
+            // Record landing position for step detection
+            landingPosition = {
+              x: currentCenterX,
+              y: (hipCenterX + ankleCenterX) / 2,
+              time: now
+            };
+            
+            console.log(`🚁 CONFIRMED STEP-OFF! Moved ${(horizontalShift * 100).toFixed(1)}% to side - starting 5s landing grace period`);
+            console.log(`Step-off detected at ${routineTime.toFixed(1)}s into routine`);
+          }
+        } else {
+          // Reset potential step-off if back near baseline
+          if (window.potentialStepOffTime) {
+            console.log(`🔙 Back to baseline position - step-off cancelled`);
+            window.potentialStepOffTime = null;
+          }
         }
       }
     }
@@ -1111,6 +1127,11 @@
           angleDiff += 360;
         }
         
+        // Debug angle changes occasionally
+        if (Math.random() < 0.01) {
+          console.log(`🎯 Angle: ${currentAngle.toFixed(1)}°, Diff: ${angleDiff.toFixed(1)}°, Total: ${totalRotation.toFixed(1)}°`);
+        }
+        
         // Only count significant movements (filter out noise)
         if (Math.abs(angleDiff) > 5 && Math.abs(angleDiff) < 90) {
           totalRotation += Math.abs(angleDiff);
@@ -1146,9 +1167,11 @@
       lastAngle = currentAngle;
       
       // Reset tracking if no movement for too long (gymnast may have stopped)
-      if (now - lastValidPositionTime > 3000) { // 3 seconds of no significant movement
-        totalRotation = 0;
-        console.log('Circle tracking reset due to lack of movement');
+      if (now - lastValidPositionTime > 10000) { // 10 seconds of no significant movement
+        if (totalRotation > 0) {
+          console.log(`Circle tracking reset due to lack of movement (was at ${totalRotation.toFixed(1)}°)`);
+          totalRotation = 0;
+        }
       }
     }
     
@@ -1282,6 +1305,7 @@
       baselineCenterX = null;
       stepOffGracePeriod = 0;
       hasSteppedOff = false;
+      window.potentialStepOffTime = null;
       
       // Reset landing step detection
       landingPosition = null;
@@ -1528,6 +1552,7 @@
       baselineCenterX = null;
       stepOffGracePeriod = 0;
       hasSteppedOff = false;
+      window.potentialStepOffTime = null;
       
       // Reset landing step detection variables
       landingPosition = null;
