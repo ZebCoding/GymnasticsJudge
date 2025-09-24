@@ -1148,10 +1148,24 @@
           totalRotation += Math.abs(angleDiff);
           lastValidPositionTime = now;
           
-          // Track if we've passed the halfway point (180° from start)
+          // Track quarter-circle progress and update display
           const angleFromStart = Math.abs(currentAngle - window.circleStartAngle);
           const angleFromStartNormalized = angleFromStart > 180 ? 360 - angleFromStart : angleFromStart;
           
+          // Calculate quarter progress (0.0 to 1.0)
+          const circleProgress = angleFromStartNormalized / 360;
+          let quarterProgress = 0;
+          
+          if (circleProgress >= 0.75) quarterProgress = 0.75;
+          else if (circleProgress >= 0.5) quarterProgress = 0.5;
+          else if (circleProgress >= 0.25) quarterProgress = 0.25;
+          else quarterProgress = 0;
+          
+          // Update display with current quarter progress
+          const totalProgress = circleCount + quarterProgress;
+          circleCountDisplay.textContent = `Circles: ${totalProgress.toFixed(2)}`;
+          
+          // Track halfway point for completion logic
           if (angleFromStartNormalized > 120 && !window.hasPassedHalfway) {
             window.hasPassedHalfway = true;
             console.log(`🔄 Halfway through circle (${angleFromStartNormalized.toFixed(1)}° from start)`);
@@ -1178,8 +1192,8 @@
             window.hasPassedHalfway = false;
             totalRotation = 0;
             
-            // Update display
-            circleCountDisplay.textContent = `Circles: ${circleCount}`;
+            // Update display to show completed whole circle
+            circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
           }
           
           // Debug occasionally
@@ -1343,7 +1357,7 @@
       totalRotation = 0;
       lastValidPositionTime = 0;
       circleCount = 0;
-      circleCountDisplay.textContent = 'Circles: 0';
+      circleCountDisplay.textContent = 'Circles: 0.00';
       
       // Reset fast circle detection
       window.circleStartAngle = undefined;
@@ -1593,7 +1607,7 @@
       lastAngle = null;
       totalRotation = 0;
       lastValidPositionTime = 0;
-      circleCountDisplay.textContent = 'Circles: 0';
+      circleCountDisplay.textContent = 'Circles: 0.00';
       
       // Reset fast circle detection
       window.circleStartAngle = undefined;
