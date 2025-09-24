@@ -4,6 +4,36 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gymnastics Judge AI - Pommel Horse/Mushroom</title>
+  
+  <!-- TESTING MODE ACTIVE - REMOVE AFTER TESTING
+  
+  TO REMOVE AFTER TESTING:
+  1. HTML Elements:
+     - input#videoFile (file upload input)
+     - button#loadVideo (Load Test Video button)
+     - div#testingNotice (test mode notice)
+  
+  2. JavaScript Variables:
+     - const loadVideoBtn = document.getElementById('loadVideo');
+     - const videoFileInput = document.getElementById('videoFile');
+  
+  3. JavaScript Event Listeners:
+     - loadVideoBtn.addEventListener('click', ...)
+     - videoFileInput.addEventListener('change', ...)
+  
+  4. Function Modifications:
+     - startRoutineAutomatically(): restore "if (!mediaStream) return;"
+     - MediaRecorder: remove if(mediaStream) wrapper and try-catch
+  
+  TO KEEP AFTER TESTING:
+  - All circle detection improvements (return to start logic)
+  - Quarter-circle progress display (0.25, 0.5, 0.75, 1.0)
+  - Realistic deduction system (0.1, 0.2, 0.3 per circle)
+  - Ground contact-based deduction logic
+  - Smart dismount detection (hand releases vs actual dismount)
+  - All pommel horse-specific improvements
+  
+  END TESTING NOTES -->
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #000; color: white; overflow: hidden; }
     
@@ -201,7 +231,12 @@
       <div class="score">Score: <span id="score">10.0</span></div>
       <div class="status-info">
         <div id="poseStatus">Pose: Not detecting</div>
-        <div id="circleCount" style="font-size: 1.5em; font-weight: bold; margin-top: 5px;">Circles: 0</div>
+        <div id="circleCount" style="font-size: 1.5em; font-weight: bold; margin-top: 5px;">Circles: 0.00</div>
+        <!-- TESTING ONLY: REMOVE AFTER TESTING -->
+        <div id="testingNotice" style="background: rgba(255,140,0,0.9); color: white; padding: 8px; border-radius: 5px; margin-top: 10px; font-weight: bold; display: none;">
+          🧪 TEST MODE - Video Upload
+        </div>
+        <!-- END TESTING CODE -->
       </div>
     </div>
     
@@ -1695,6 +1730,9 @@
         loadVideoBtn.style.background = 'rgba(255, 140, 0, 0.9)';
         poseStatus.textContent = 'Test Video Loaded - Ready to Start';
         poseStatus.style.color = '#ff8c00';
+        
+        // Show testing notice
+        document.getElementById('testingNotice').style.display = 'block';
         
         console.log('✅ Switched to video file mode for testing');
       }
