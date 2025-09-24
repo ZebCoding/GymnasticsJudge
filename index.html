@@ -888,7 +888,6 @@
         console.log(`Measurements - Knee angles L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
         console.log(`Distances - Hips:${hipDistance.toFixed(3)} Ankles:${ankleDist.toFixed(3)} Knees:${kneeDist.toFixed(3)}`);
         console.log(`Ratios - Ankle/Hip:${(ankleDist/hipDistance).toFixed(2)} Knee/Hip:${(kneeDist/hipDistance).toFixed(2)}`);
-        console.log(`Cooldowns - Left leg: ${((performance.now() - (lastDeductionAt['Left leg bent'] || 0))/1000).toFixed(1)}s ago, Right leg: ${((performance.now() - (lastDeductionAt['Right leg bent'] || 0))/1000).toFixed(1)}s ago`);
       }
       
       // More sensitive legs apart detection - multiple methods
