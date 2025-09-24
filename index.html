@@ -1328,8 +1328,13 @@
     }
     
     function startRoutineAutomatically() {
-      if (!mediaStream) return;
-      
+      // TESTING ONLY: Support video file mode - REMOVE AFTER TESTING
+      if (!mediaStream && !video.src) {
+        console.error('❌ Cannot start routine: no camera or video source!');
+        return;
+      }
+      // END TESTING CODE
+      // if (!mediaStream) return; <-- add this back after removing the test code
       // Transition to ACTIVE state - deductions now enabled
       routineState = ROUTINE_STATES.ACTIVE;
       routineStarted = true;
@@ -1389,15 +1394,23 @@
       
       // Setup MediaRecorder
       recordedChunks = []; // Clear previous recording
-      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/webm" });
-      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-      mediaRecorder.onstop = () => {
-        // Store video blob for replay instead of downloading
-        recordedVideoBlob = new Blob(recordedChunks, { type: "video/webm" });
-        console.log('Video recorded, starting replay system');
-        startReplay();
-      };
-      mediaRecorder.start();
+      
+      // TESTING ONLY: Skip recording in video file mode - REMOVE AFTER TESTING
+      if (mediaStream) {
+        mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/webm" });
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+          // Store video blob for replay instead of downloading
+          recordedVideoBlob = new Blob(recordedChunks, { type: "video/webm" });
+          console.log('Video recorded, starting replay system');
+          startReplay();
+        };
+        mediaRecorder.start();
+      } else {
+        console.log('🎬 Test video mode: Recording disabled for testing');
+      }
+      // END TESTING CODE
+      // RESTORE AFTER TESTING: remove the if(mediaStream) check and revert to original MediaRecorder setup
       
       poseStatus.textContent = 'Routine Started - Tracking Performance';
       poseStatus.style.color = '#ff9800';
