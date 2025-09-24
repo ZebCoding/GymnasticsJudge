@@ -249,6 +249,20 @@
     let totalRotation = 0; // Accumulated rotation in degrees
     let lastValidPositionTime = 0; // Track last time we had valid position data
     
+    // Circle-based deduction system (realistic gymnastics judging)
+    let currentCircleStartTime = 0; // When current circle started
+    let currentCircleWorstBending = 0; // Worst bending violation in current circle (0.0-0.3)
+    let currentCircleWorstSpreading = 0; // Worst spreading violation in current circle (0.0-0.3)
+    let currentCircleDeductionApplied = false; // Has deduction been applied for current circle?
+    let circleDeductions = []; // Track deductions per circle for replay
+    
+    // Circle-based deduction system (realistic gymnastics judging)
+    let currentCircleStartTime = 0; // When current circle started
+    let currentCircleWorstBending = 0; // Worst bending violation in current circle (0.0-0.3)
+    let currentCircleWorstSpreading = 0; // Worst spreading violation in current circle (0.0-0.3)
+    let currentCircleDeductionApplied = false; // Has deduction been applied for current circle?
+    let circleDeductions = []; // Track deductions per circle for replay
+    
     // Step-off detection variables (for mushroom/pommel horse)
     let baselineCenterX = null; // Baseline horizontal center when on apparatus
     let stepOffGracePeriod = 0; // Time when step-off grace period ends
@@ -272,9 +286,7 @@
     let currentlyGrounded = true;    // Are both feet currently on ground?
     let lastGroundCheckTime = 0;     // Prevent too frequent ground checks
 
-    // Control repeated deductions: per-reason cooldown in milliseconds
-    const DEDUCTION_COOLDOWN_MS = 1000; // 1 second cooldown
-    let lastDeductionAt = {}; // reason -> timestamp (performance.now())
+    // Removed old cooldown system - using realistic circle-based judging instead
     
     // Detection loop monitoring
     let lastDetectionTime = 0;
@@ -632,6 +644,44 @@
       }
     }
     
+    function evaluateBendingSeverity(leftKneeAngle, rightKneeAngle, kneeThreshold = 160) {
+      // Evaluate how badly legs are bent (0.0 = perfect, 0.3 = worst)
+      const leftBend = Math.max(0, kneeThreshold - leftKneeAngle);
+      const rightBend = Math.max(0, kneeThreshold - rightKneeAngle);
+      const worstBend = Math.max(leftBend, rightBend);
+      
+      if (worstBend <= 5) return 0.0;  // No significant bending
+      if (worstBend <= 15) return 0.1; // Small bending (155-160°)
+      if (worstBend <= 30) return 0.2; // Medium bending (130-155°)
+      return 0.3;                       // Major bending (< 130°)
+    }
+    
+    function evaluateSpreadingSeverity(landmarks, hipDistance, ankleDist, kneeDist) {
+      // Evaluate how badly legs are spread (0.0 = perfect, 0.3 = worst)
+      const ankleRatio = ankleDist / hipDistance;
+      const kneeRatio = kneeDist / hipDistance;
+      
+      // Calculate worst spreading metric
+      const ankleSpread = Math.max(0, ankleRatio - 1.0); // Normal = 1.0
+      const kneeSpread = Math.max(0, kneeRatio - 1.0);   // Normal = 1.0
+      const worstSpread = Math.max(ankleSpread, kneeSpread);
+      
+      if (worstSpread <= 0.2) return 0.0; // No significant spreading
+      if (worstSpread <= 0.4) return 0.1; // Small spreading
+      if (worstSpread <= 0.6) return 0.2; // Medium spreading  
+      return 0.3;                          // Major spreading
+    }
+    
+    function evaluateStepSeverity(movementDistance) {
+      // Evaluate step severity for landing deductions (0.1, 0.2, or 0.3)
+      const movePercent = movementDistance * 100; // Convert to percentage
+      
+      if (movePercent <= 3) return 0.0;  // Tiny adjustment, no deduction
+      if (movePercent <= 8) return 0.1;  // Small step
+      if (movePercent <= 15) return 0.2; // Medium step
+      return 0.3;                         // Large step
+    }
+    
     function detectLegsApart(landmarks, hipDistance, ankleDist, kneeDist) {
       // Simple legs apart detection when rules require it
       const ankleRatio = ankleDist / hipDistance;
@@ -643,10 +693,6 @@
       const isApart = (ankleRatio > maxAnkleDistFactor) || 
                       (kneeRatio > maxKneeDistFactor) || 
                       (ankleDist > maxAbsoluteAnkleDist);
-      
-      if (isApart && Math.random() < 0.02) {
-        console.log(`🦵 Legs apart detected - Ankle ratio: ${ankleRatio.toFixed(2)}, Knee ratio: ${kneeRatio.toFixed(2)}, Absolute: ${ankleDist.toFixed(3)}`);
-      }
       
       return isApart;
     }
@@ -869,40 +915,37 @@
           console.log(`  Check bending: ${deductionRules.checkBending}, Check spreading: ${deductionRules.checkSpreading}`);
         }
         
-        // Apply leg bending deductions only when rules require it
-        if (deductionRules.checkBending) {
-          if (leftKneeAngle < kneeThreshold) {
-            console.log(`Left leg bent detected: ${leftKneeAngle.toFixed(1)}° < ${kneeThreshold}° (${deductionRules.reason})`);
-            addDeduction("Left leg bent");
-          }
+        // Realistic circle-based deduction system
+        if (deductionRules.checkBending || deductionRules.checkSpreading) {
+          // Evaluate current form quality
+          const bendingSeverity = deductionRules.checkBending ? evaluateBendingSeverity(leftKneeAngle, rightKneeAngle) : 0;
+          const spreadingSeverity = deductionRules.checkSpreading ? evaluateSpreadingSeverity(landmarks, hipDistance, ankleDist, kneeDist) : 0;
           
-          if (rightKneeAngle < kneeThreshold) {
-            console.log(`Right leg bent detected: ${rightKneeAngle.toFixed(1)}° < ${kneeThreshold}° (${deductionRules.reason})`);
-            addDeduction("Right leg bent");
-          }
-        } else {
-          // Log when bending is allowed
-          if ((leftKneeAngle < kneeThreshold || rightKneeAngle < kneeThreshold) && Math.random() < 0.01) {
-            console.log(`Leg bending detected but allowed: ${deductionRules.reason}`);
-          }
-        }
-        
-        // Always check for legs apart (but apply different rules based on scenario)
-        const isLegsApart = detectLegsApart(landmarks, hipDistance, ankleDist, kneeDist);
-        
-        if (isLegsApart) {
-          if (deductionRules.checkSpreading) {
-            // Scenario 1 or 4: Penalize legs apart
-            console.log(`Legs apart detected - PENALIZED: ${deductionRules.reason}`);
-            addDeduction("Legs too far apart");
-          } else {
-            // Scenario 3: Mounting grace - detect but don't penalize
-            if (Math.random() < 0.01) {
-              console.log(`Legs apart detected but ALLOWED: ${deductionRules.reason}`);
+          // Track worst mistakes in current circle
+          if (bendingSeverity > currentCircleWorstBending) {
+            currentCircleWorstBending = bendingSeverity;
+            if (bendingSeverity > 0) {
+              recordMistakeForReplay("bending", bendingSeverity);
             }
           }
+          
+          if (spreadingSeverity > currentCircleWorstSpreading) {
+            currentCircleWorstSpreading = spreadingSeverity;
+            if (spreadingSeverity > 0) {
+              recordMistakeForReplay("spreading", spreadingSeverity);
+            }
+          }
+          
+          // Debug current form quality occasionally
+          if (Math.random() < 0.005) {
+            console.log(`🔍 Form check - Bending: ${bendingSeverity.toFixed(1)}, Spreading: ${spreadingSeverity.toFixed(1)}, Circle worst: B${currentCircleWorstBending.toFixed(1)}/S${currentCircleWorstSpreading.toFixed(1)}`);
+          }
+        } else {
+          // Log when deductions are not being applied
+          if (Math.random() < 0.005) {
+            console.log(`📝 Form monitoring paused: ${deductionRules.reason}`);
+          }
         }
-        // Note: Scenario 2 (legs behind pommel/not visible) is handled in shouldApplyDeductions()
       }
       
       // Step-off detection - detect when gymnast steps off mushroom
@@ -1005,13 +1048,19 @@
       // Step threshold - significant movement after landing
       const stepThreshold = 0.08; // Adjust based on testing
       
-      if (totalMovement > stepThreshold) {
+      // Evaluate step severity and apply realistic deductions
+      const stepSeverity = evaluateStepSeverity(totalMovement);
+      
+      if (stepSeverity > 0) {
         // Allow small adjustments in first 1 second after landing
         const timeSinceLanding = (now - landingPosition.time) / 1000;
         if (timeSinceLanding > 1.0) {
-          console.log(`👣 STEP DETECTED! Moved ${(totalMovement * 100).toFixed(1)}% from landing position`);
-          console.log(`Movement: X=${(moveX * 100).toFixed(1)}%, Y=${(moveY * 100).toFixed(1)}%, Total=${(totalMovement * 100).toFixed(1)}%`);
-          addDeduction("Step after landing");
+          // Count this step and apply deduction
+          const stepCount = (window.stepCount || 0) + 1;
+          window.stepCount = stepCount;
+          
+          console.log(`👣 STEP ${stepCount} DETECTED! Moved ${(totalMovement * 100).toFixed(1)}% - Severity: ${stepSeverity}`);
+          applyStepDeduction(stepSeverity, stepCount);
           
           // Update landing position to prevent repeated deductions for same step sequence
           landingPosition.x = currentCenterX;
@@ -1076,13 +1125,20 @@
           if (totalRotation >= 360) {
             circleCount++;
             totalRotation = 0; // Reset for next circle
-            console.log(`🎯 Circle completed! Total circles: ${circleCount}`);
+            
+            // Apply deduction for completed circle based on worst mistakes
+            if (routineState === ROUTINE_STATES.ACTIVE) {
+              applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
+              
+              // Reset for next circle
+              currentCircleWorstBending = 0;
+              currentCircleWorstSpreading = 0;
+              currentCircleStartTime = now;
+            }
             
             // Update display during live routine (will also show in replay)
             circleCountDisplay.textContent = `Circles: ${circleCount}`;
-            if (routineState === ROUTINE_STATES.ACTIVE) {
-              console.log(`Circle ${circleCount} detected at ${((now - routineStartTime) / 1000).toFixed(1)}s into routine`);
-            }
+            console.log(`🎯 Circle ${circleCount} completed at ${((now - routineStartTime) / 1000).toFixed(1)}s into routine`);
           }
         }
       }
@@ -1096,47 +1152,107 @@
       }
     }
     
-    function addDeduction(reason) {
-      // Allow repeated deductions for the same reason after a short cooldown
+    function applyCircleDeduction(circleNumber, bendingSeverity, spreadingSeverity) {
+      // Apply single deduction for completed circle based on worst mistake
+      const worstMistake = Math.max(bendingSeverity, spreadingSeverity);
+      
+      if (worstMistake === 0) {
+        console.log(`✨ Circle ${circleNumber} completed with perfect form - no deduction`);
+        return;
+      }
+      
       const now = performance.now();
-      const lastTime = lastDeductionAt[reason] || 0;
-      if (now - lastTime < DEDUCTION_COOLDOWN_MS) {
-        console.log(`Deduction "${reason}" blocked by cooldown (${((now - lastTime)/1000).toFixed(1)}s ago)`);
-        return;
+      const videoTime = (now - routineStartTime) / 1000;
+      
+      // Apply the deduction
+      score = Math.max(5.0, score - worstMistake);
+      
+      // Create descriptive reason
+      let reason = `Circle ${circleNumber}: `;
+      if (worstMistake === 0.1) reason += "Minor form break";
+      else if (worstMistake === 0.2) reason += "Moderate form break";
+      else reason += "Major form break";
+      
+      if (bendingSeverity > 0 && spreadingSeverity > 0) {
+        reason += " (bending + spreading)";
+      } else if (bendingSeverity > 0) {
+        reason += " (leg bending)";
+      } else {
+        reason += " (legs spread)";
       }
       
-      // Safety check: prevent excessive deduction frequency
-      if (deductionTimestamps.length > 50) {
-        console.warn('Deduction limit reached to prevent system overload');
-        return;
-      }
+      console.log(`🔄 CIRCLE ${circleNumber} COMPLETE: Deduction -${worstMistake} (${reason}) - Score: ${score.toFixed(1)}`);
       
-      lastDeductionAt[reason] = now;
+      // Record for replay - but don't pause at circle completion, pause happened during mistake
+      circleDeductions.push({
+        circleNumber: circleNumber,
+        deduction: worstMistake,
+        reason: reason,
+        time: videoTime,
+        score: score.toFixed(1)
+      });
       
-      // Log current state before deduction
-      console.log(`BEFORE deduction - Current score: ${score.toFixed(1)}, Routine state: ${routineState}`);
-
-      // Apply deduction with proper minimum score of 5.0
-      score = Math.max(5.0, score - 0.2);
-      console.log(`Deduction applied: "${reason}" - New score: ${score.toFixed(1)}, min: 5.0`);
+      scoreDisplay.textContent = score.toFixed(1);
+    }
+    
+    function applyStepDeduction(stepSeverity, stepNumber) {
+      // Apply immediate deduction for each step after landing
+      if (stepSeverity === 0) return;
       
-      // Double check we're not stopping too early
-      if (score > 5.0 && score < 8.0) {
-        console.log('Score in danger zone, verifying min score enforcement');
-      }
-
-      // Record timestamp for replay (time since routine started)
-      const videoTime = (now - routineStartTime) / 1000; // Convert to seconds
+      const now = performance.now();
+      const videoTime = (now - routineStartTime) / 1000;
+      
+      // Apply the deduction
+      score = Math.max(5.0, score - stepSeverity);
+      
+      // Create descriptive reason
+      let reason = `Step ${stepNumber}: `;
+      if (stepSeverity === 0.1) reason += "Small step";
+      else if (stepSeverity === 0.2) reason += "Medium step";
+      else reason += "Large step";
+      
+      console.log(`👣 STEP DEDUCTION: -${stepSeverity} (${reason}) - Score: ${score.toFixed(1)}`);
+      
+      // Record timestamp for replay pausing
       deductionTimestamps.push({
         time: videoTime,
         reason: reason,
         score: score.toFixed(1)
       });
-      console.log(`Deduction timestamp recorded: ${videoTime.toFixed(2)}s into routine`);
-
-      // Simply update the score display - no snapshots or logging needed
+      
       scoreDisplay.textContent = score.toFixed(1);
-      console.log(`Score updated to ${score.toFixed(1)} - deduction will be shown in video replay`);
+    }
+    
+    function recordMistakeForReplay(mistakeType, severity) {
+      // Record mistake timestamp for replay pausing (but don't deduct yet for circles)
+      if (severity === 0) return;
+      
+      const now = performance.now();
+      const videoTime = (now - routineStartTime) / 1000;
+      
+      let reason = "";
+      if (mistakeType === "bending") {
+        if (severity === 0.1) reason = "Minor leg bending";
+        else if (severity === 0.2) reason = "Moderate leg bending";
+        else reason = "Major leg bending";
+      } else if (mistakeType === "spreading") {
+        if (severity === 0.1) reason = "Minor leg spreading";
+        else if (severity === 0.2) reason = "Moderate leg spreading";
+        else reason = "Major leg spreading";
+      }
+      
+      // Only record if this is worse than what we've seen or it's been a while
+      const lastMistake = deductionTimestamps[deductionTimestamps.length - 1];
+      if (!lastMistake || (videoTime - lastMistake.time) > 2.0) {
+        // Record for replay pausing - but note this doesn't deduct points yet
+        deductionTimestamps.push({
+          time: videoTime,
+          reason: reason + " (will be scored at end of circle)",
+          score: "Pending"
+        });
+        
+        console.log(`🎥 Mistake recorded for replay: ${reason} at ${videoTime.toFixed(1)}s`);
+      }
     }
     
     function startRoutineAutomatically() {
@@ -1155,7 +1271,6 @@
       
       // Reset score & tracking
       score = 10.0;
-      lastDeductionAt = {};
       deductionTimestamps = []; // Reset deduction timestamps
       scoreDisplay.textContent = score.toFixed(1);
       
@@ -1184,8 +1299,16 @@
       currentlyGrounded = true;
       lastGroundCheckTime = 0;
       
+      // Reset circle-based deduction tracking
+      currentCircleStartTime = routineStartTime;
+      currentCircleWorstBending = 0;
+      currentCircleWorstSpreading = 0;
+      currentCircleDeductionApplied = false;
+      circleDeductions = [];
+      window.stepCount = 0; // Reset step counter
+      
       console.log('Routine start time recorded for video timing');
-      console.log('Ground contact-based deduction system initialized');
+      console.log('Realistic circle-based deduction system initialized');
       
       // Setup MediaRecorder
       recordedChunks = []; // Clear previous recording
@@ -1393,7 +1516,6 @@
       // Reset score for next person
       score = 10.0;
       scoreDisplay.textContent = score.toFixed(1);
-      lastDeductionAt = {}; // Clear deduction cooldowns
       
       // Clear recorded data
       recordedVideoBlob = null;
@@ -1416,6 +1538,14 @@
       totalRotation = 0;
       lastValidPositionTime = 0;
       circleCountDisplay.textContent = 'Circles: 0';
+      
+      // Reset circle-based deduction tracking
+      currentCircleStartTime = 0;
+      currentCircleWorstBending = 0;
+      currentCircleWorstSpreading = 0;
+      currentCircleDeductionApplied = false;
+      circleDeductions = [];
+      window.stepCount = 0;
       
       poseStatus.textContent = 'Ready for Next Routine - Score Reset';
       poseStatus.style.color = '#4caf50';
