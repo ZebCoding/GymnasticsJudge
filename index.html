@@ -207,6 +207,10 @@
     
     <!-- Bottom controls -->
     <div class="bottom-controls">
+      <!-- TESTING ONLY: REMOVE AFTER TESTING -->
+      <input type="file" id="videoFile" accept="video/*" style="display: none;">
+      <button id="loadVideo" style="margin-right: 15px;">Load Test Video</button>
+      <!-- END TESTING CODE -->
       <button id="startRoutine">Ready for Routine</button>
       <button id="closeReplay" style="display: none;">Close Replay & Ready for Next</button>
     </div>
@@ -230,6 +234,10 @@
 
     const startBtn = document.getElementById('startRoutine');
     const closeReplayBtn = document.getElementById('closeReplay');
+    // TESTING ONLY: REMOVE AFTER TESTING
+    const loadVideoBtn = document.getElementById('loadVideo');
+    const videoFileInput = document.getElementById('videoFile');
+    // END TESTING CODE
     
     
 
@@ -1626,6 +1634,56 @@
       
       console.log('Replay closed, ready for next routine');
     });
+    
+    // ========== TESTING ONLY: VIDEO FILE SUPPORT ==========
+    // TODO: REMOVE ALL THIS AFTER TESTING PHASE IS COMPLETE
+    
+    // Video file loading for testing
+    loadVideoBtn.addEventListener('click', () => {
+      videoFileInput.click();
+    });
+    
+    videoFileInput.addEventListener('change', (event) => {
+      const file = event.target.files[0];
+      if (file && file.type.startsWith('video/')) {
+        const videoUrl = URL.createObjectURL(file);
+        
+        // Stop any existing camera stream
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Load video file into the video element
+        video.srcObject = null;
+        video.src = videoUrl;
+        video.loop = true; // Loop for repeated testing
+        video.muted = true; // Prevent audio playback
+        
+        video.addEventListener('loadeddata', () => {
+          console.log('📹 Test video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
+          console.log('🎬 Video ready for pose detection testing');
+          
+          // Start pose detection on the loaded video
+          setTimeout(() => {
+            console.log('🤖 Starting pose detection on test video...');
+            detectPose();
+          }, 1000);
+        });
+        
+        video.play();
+        
+        // Update UI to indicate test mode
+        loadVideoBtn.textContent = 'Video Mode';
+        loadVideoBtn.style.background = 'rgba(255, 140, 0, 0.9)';
+        poseStatus.textContent = 'Test Video Loaded - Ready to Start';
+        poseStatus.style.color = '#ff8c00';
+        
+        console.log('✅ Switched to video file mode for testing');
+      }
+    });
+    
+    // ========== END TESTING CODE ==========
+    
   </script>
 </body>
 </html>
