@@ -107,20 +107,21 @@
       transform: none;
     }
     
-    /* Replay status overlay */
+    /* Replay status overlay - positioned at top */
     .replay-status {
       position: absolute;
-      top: 50%;
+      top: 100px; /* Below the score and status bar */
       left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0, 0, 0, 0.8);
-      padding: 20px 30px;
-      border-radius: 12px;
-      font-size: 1.5em;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.9);
+      padding: 15px 25px;
+      border-radius: 8px;
+      font-size: 1.3em;
       font-weight: bold;
       text-align: center;
       pointer-events: none;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+      border: 2px solid rgba(255, 255, 255, 0.2);
     }
     
     /* Hide replay section initially */
@@ -150,8 +151,9 @@
       }
       
       .replay-status {
-        font-size: 1.3em;
-        padding: 15px 25px;
+        font-size: 1.2em;
+        padding: 12px 20px;
+        top: 90px; /* Closer to top bar on mobile */
       }
     }
     
@@ -171,8 +173,9 @@
       }
       
       .replay-status {
-        font-size: 1.1em;
-        padding: 12px 20px;
+        font-size: 1.0em;
+        padding: 10px 15px;
+        top: 80px; /* Even closer on small screens */
       }
     }
   </style>
