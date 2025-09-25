@@ -1163,9 +1163,17 @@
           else if (circleProgress >= 0.25) quarterProgress = 0.25;
           else quarterProgress = 0;
           
-          // Update display with current quarter progress
+          // Update display with current quarter progress  
           const totalProgress = circleCount + quarterProgress;
           circleCountDisplay.textContent = `Circles: ${totalProgress.toFixed(2)}`;
+          
+          // During routine, also update main score display to show circles
+          if (routineState === ROUTINE_STATES.ACTIVE) {
+            const mainScoreDisplay = document.getElementById('score');
+            if (mainScoreDisplay) {
+              mainScoreDisplay.textContent = totalProgress.toFixed(2);
+            }
+          }
           
           // Track halfway point for completion logic
           if (angleFromStartNormalized > 120 && !window.hasPassedHalfway) {
@@ -1196,6 +1204,14 @@
             
             // Update display to show completed whole circle
             circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+            
+            // Update main score display during routine
+            if (routineState === ROUTINE_STATES.ACTIVE) {
+              const mainScoreDisplay = document.getElementById('score');
+              if (mainScoreDisplay) {
+                mainScoreDisplay.textContent = circleCount.toFixed(2);
+              }
+            }
           }
           
           // Debug occasionally
@@ -1258,7 +1274,7 @@
         score: score.toFixed(1)
       });
       
-      scoreDisplay.textContent = score.toFixed(1);
+      // Don't update score display during routine - scores only shown during replay
     }
     
     function applyStepDeduction(stepSeverity, stepNumber) {
@@ -1286,7 +1302,7 @@
         score: score.toFixed(1)
       });
       
-      scoreDisplay.textContent = score.toFixed(1);
+      // Don't update score display during routine - scores only shown during replay
     }
     
     function recordMistakeForReplay(mistakeType, severity) {
@@ -1337,7 +1353,11 @@
       // Reset score & tracking
       score = 10.0;
       deductionTimestamps = []; // Reset deduction timestamps
-      scoreDisplay.textContent = score.toFixed(1);
+      
+      // Hide score during routine for suspense - show circle progress instead
+      scoreDisplay.parentElement.innerHTML = '<div class="score">Circles: <span id="score">0.00</span></div>';
+      const newScoreDisplay = document.getElementById('score');
+      newScoreDisplay.textContent = '0.00';
       
       // Record routine start time for video timing
       routineStartTime = performance.now();
@@ -1418,6 +1438,9 @@
       
       poseStatus.textContent = 'Routine Complete - Ready for Next';
       poseStatus.style.color = '#4caf50';
+      
+      // Restore score display after routine ends
+      scoreDisplay.parentElement.innerHTML = '<div class="score">Final Score: <span id="score">' + score.toFixed(1) + '</span></div>';
       
       // Don't show alert immediately - replay will handle this
       console.log(`Routine complete! Final Score: ${score.toFixed(1)}`);
@@ -1584,9 +1607,12 @@
       startBtn.disabled = false;
       startBtn.textContent = 'Ready for Routine';
       
-      // Reset score for next person
+      // Reset score for next person and restore normal score display
       score = 10.0;
-      scoreDisplay.textContent = score.toFixed(1);
+      scoreDisplay.parentElement.innerHTML = '<div class="score">Score: <span id="score">10.0</span></div>';
+      // Update reference to new score element
+      const newScoreDisplay = document.getElementById('score');
+      newScoreDisplay.textContent = score.toFixed(1);
       
       // Clear recorded data
       recordedVideoBlob = null;
