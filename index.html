@@ -920,7 +920,7 @@
       // Knee angles
       const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
       const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-      const kneeThreshold = 160; // More sensitive - was 170
+      const kneeThreshold = 140; // Less sensitive - was 160 (lower threshold = less strict)
 
       // Body width measurements
       const hipDistance = distance(leftHip, rightHip);
@@ -1144,97 +1144,98 @@
     
     function detectCircles(landmarks) {
       if (routineState !== ROUTINE_STATES.ACTIVE) return;
+      if (!hasEverBeenAirborne) return; // Only count circles during routine, not mounting
       
-      // Pommel horse circle detection: track when legs disappear and reappear
-      // When legs go behind pommel horse (low visibility) and come back = 1 circle
-      const leftAnkle = landmarks[27];
-      const rightAnkle = landmarks[28];
-      const leftKnee = landmarks[25];
-      const rightKnee = landmarks[26];
+      // Movement-based circle detection: track body rotation over time
+      const leftHip = landmarks[23], rightHip = landmarks[24];
+      const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
       
-      // Check leg visibility - legs are "visible" if we can see them reasonably well
-      const leftLegVisible = leftAnkle && leftKnee && 
-                            (leftAnkle.visibility || 1) > 0.4 && 
-                            (leftKnee.visibility || 1) > 0.4;
-      const rightLegVisible = rightAnkle && rightKnee && 
-                             (rightAnkle.visibility || 1) > 0.4 && 
-                             (rightKnee.visibility || 1) > 0.4;
+      if (!leftHip || !rightHip || !leftAnkle || !rightAnkle) return;
       
-      // Allow counting if at least one leg is clearly visible (less strict)
-      const legsVisible = leftLegVisible || rightLegVisible;
-      const bothLegsVisible = leftLegVisible && rightLegVisible;
       const now = performance.now();
+      
+      // Calculate current body center and angle
+      const hipCenterX = (leftHip.x + rightHip.x) / 2;
+      const ankleCenterX = (leftAnkle.x + rightAnkle.x) / 2;
+      const bodyX = (hipCenterX + ankleCenterX) / 2;
+      const bodyY = (((leftHip.y + rightHip.y) / 2) + ((leftAnkle.y + rightAnkle.y) / 2)) / 2;
       
       // Initialize circle state tracking
       if (window.circleDetectionState === undefined) {
         window.circleDetectionState = {
-          legsCurrentlyVisible: legsVisible,
-          lastVisibilityChange: now,
-          inCircle: false,
-          circleStartTime: 0
+          lastBodyX: bodyX,
+          lastBodyY: bodyY,
+          lastUpdateTime: now,
+          movementHistory: [],
+          circleStartTime: 0,
+          lastCircleTime: 0
         };
-        console.log(`🎯 Circle detection initialized - Legs visible: ${legsVisible}`);
+        console.log(`🎯 Circle detection initialized - Movement-based tracking`);
       }
       
       const state = window.circleDetectionState;
       
-      // Debug visibility more frequently to catch circle transitions
-      if (Math.random() < 0.05) {
-        const leftAnkleVis = leftAnkle ? (leftAnkle.visibility || 1).toFixed(2) : 'missing';
-        const rightAnkleVis = rightAnkle ? (rightAnkle.visibility || 1).toFixed(2) : 'missing';
-        const leftKneeVis = leftKnee ? (leftKnee.visibility || 1).toFixed(2) : 'missing';
-        const rightKneeVis = rightKnee ? (rightKnee.visibility || 1).toFixed(2) : 'missing';
+      // Only update every 200ms to avoid noise
+      if (now - state.lastUpdateTime > 200) {
+        const moveX = bodyX - state.lastBodyX;
+        const moveY = bodyY - state.lastBodyY;
+        const distance = Math.sqrt(moveX * moveX + moveY * moveY);
         
-        console.log(`👀 L: ankle(${leftAnkleVis}) knee(${leftKneeVis}) = ${leftLegVisible ? 'VIS' : 'HIDDEN'}`);
-        console.log(`👀 R: ankle(${rightAnkleVis}) knee(${rightKneeVis}) = ${rightLegVisible ? 'VIS' : 'HIDDEN'}`);
-        console.log(`🔄 Either visible: ${legsVisible}, In circle: ${state.inCircle}, Was: ${state.legsCurrentlyVisible}`);
-      }
-      
-      // Detect visibility changes
-      if (legsVisible !== state.legsCurrentlyVisible) {
-        state.lastVisibilityChange = now;
-        console.log(`🔄 VISIBILITY CHANGE: ${state.legsCurrentlyVisible ? 'visible' : 'hidden'} → ${legsVisible ? 'visible' : 'hidden'}`);
-        
-        if (!state.legsCurrentlyVisible && legsVisible) {
-          // Legs just became visible (came back from behind pommel horse)
-          if (state.inCircle) {
-            // Complete circle detected!
-            circleCount++;
-            console.log(`🎯 Circle ${circleCount} COMPLETED! Legs returned to view`);
+        // Track movement if significant
+        if (distance > 0.02) {
+          state.movementHistory.push({
+            x: bodyX,
+            y: bodyY,
+            time: now,
+            moveX: moveX,
+            moveY: moveY
+          });
+          
+          // Keep only recent movements (last 4 seconds)
+          state.movementHistory = state.movementHistory.filter(m => now - m.time < 4000);
+          
+          // Check for circular motion pattern
+          if (state.movementHistory.length > 6) {
+            const totalMoveX = state.movementHistory.reduce((sum, m) => sum + m.moveX, 0);
+            const totalMoveY = state.movementHistory.reduce((sum, m) => sum + m.moveY, 0);
+            const totalDistance = state.movementHistory.reduce((sum, m) => sum + Math.sqrt(m.moveX * m.moveX + m.moveY * m.moveY), 0);
             
-            // Apply deduction for completed circle based on worst mistakes
-            applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
+            // Circle detected if:
+            // 1. Net movement is small (returned to similar position)
+            // 2. Total distance traveled is significant (moved around)
+            // 3. Enough time has passed since last circle
+            const netMovement = Math.sqrt(totalMoveX * totalMoveX + totalMoveY * totalMoveY);
+            const timeElapsed = now - state.lastCircleTime;
             
-            // Reset for next circle
-            currentCircleWorstBending = 0;
-            currentCircleWorstSpreading = 0;
-            currentCircleStartTime = now;
-            state.inCircle = false;
+            if (netMovement < 0.1 && totalDistance > 0.3 && timeElapsed > 1500) {
+              circleCount++;
+              state.lastCircleTime = now;
+              state.movementHistory = []; // Reset for next circle
+              
+              console.log(`🎯 Circle ${circleCount} COMPLETED! Net movement: ${netMovement.toFixed(3)}, Total distance: ${totalDistance.toFixed(3)}`);
+              
+              // Apply deduction for completed circle
+              applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
+              
+              // Reset for next circle
+              currentCircleWorstBending = 0;
+              currentCircleWorstSpreading = 0;
+              currentCircleStartTime = now;
+              
+              // Update display
+              circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+            }
             
-            // Update display to show completed whole circle
-            circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+            // Debug circle detection occasionally
+            if (Math.random() < 0.02) {
+              console.log(`🔄 Circle check - Net: ${netMovement.toFixed(3)}, Total: ${totalDistance.toFixed(3)}, Time since last: ${(timeElapsed/1000).toFixed(1)}s`);
+            }
           }
-        } else if (state.legsCurrentlyVisible && !legsVisible) {
-          // Legs just disappeared (went behind pommel horse)
-          console.log(`🔄 Circle started - Legs disappeared behind pommel horse`);
-          state.inCircle = true;
-          state.circleStartTime = now;
         }
         
-        state.legsCurrentlyVisible = legsVisible;
-      }
-      
-      // Show progress during circle (when legs are not visible)
-      if (state.inCircle && !legsVisible) {
-        const circleProgress = Math.min((now - state.circleStartTime) / 2000, 0.9); // Max 0.9 until completion
-        const totalProgress = circleCount + circleProgress;
-        circleCountDisplay.textContent = `Circles: ${totalProgress.toFixed(2)}`;
-      }
-      
-      // Reset if legs have been visible too long without starting a circle
-      if (legsVisible && !state.inCircle && (now - state.lastVisibilityChange > 10000)) {
-        console.log('Circle detection reset - no movement detected');
-        state.lastVisibilityChange = now;
+        state.lastBodyX = bodyX;
+        state.lastBodyY = bodyY;
+        state.lastUpdateTime = now;
       }
     }
     
