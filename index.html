@@ -560,38 +560,40 @@
       // Calculate how close legs are together (ankle distance)
       const ankleDistance = Math.abs(leftAnkle.x - rightAnkle.x);
       
-      // MOUNTING DETECTION: One foot behind mushroom, one in front
-      // This means: significant visibility difference OR one foot much less visible
-      const visibilityDiff = Math.abs(leftVis - rightVis);
-      const oneFootHidden = leftVis < 0.6 || rightVis < 0.6;
-      const mountingPosition = visibilityDiff > 0.3 || oneFootHidden;
+      // MOUNTING vs ROUTINE DETECTION:
+      // Mounting = legs apart is OK, no deductions yet
+      // Routine = legs should be together, deductions apply
       
-      // ROUTINE DETECTION: Both feet visible and moving together in circles
-      // This means: both feet visible, relatively close together, and airborne
-      const bothFeetVisible = leftVis > 0.6 && rightVis > 0.6;
-      const legsCloseish = ankleDistance < 0.15; // Legs reasonably close together
       const actuallyAirborne = avgLegLength < 0.10; // Standard airborne threshold
+      
+      // Key insight: During mounting, legs are often apart (0.15+ distance)
+      // During routine, legs should be close together (< 0.08 distance)
+      const legsApart = ankleDistance > 0.08; // Legs spread apart
+      const legsCloseish = ankleDistance < 0.08; // Legs close together
       
       let isGrounded, mounting;
       
-      if (mountingPosition && !bothFeetVisible) {
-        // Still mounting - one foot behind mushroom, don't trigger airborne yet
+      if (!actuallyAirborne) {
+        // On ground = always mounting phase (legs apart allowed)
         isGrounded = true;
         mounting = true;
         if (Math.random() < 0.05) {
-          console.log(`🦶 MOUNTING: L vis:${leftVis.toFixed(2)} R vis:${rightVis.toFixed(2)}, visDiff:${visibilityDiff.toFixed(2)} -> STILL MOUNTING`);
+          console.log(`🦶 MOUNTING/GROUNDED: Ankle dist:${ankleDistance.toFixed(3)}, leg length:${avgLegLength.toFixed(3)} -> MOUNTING PHASE`);
         }
-      } else if (bothFeetVisible && legsCloseish && actuallyAirborne) {
-        // Both feet visible and close together and airborne = routine started
+      } else if (actuallyAirborne && legsCloseish) {
+        // Airborne + legs close together = routine started
         isGrounded = false;
         mounting = false;
         if (Math.random() < 0.05) {
-          console.log(`🎢 ROUTINE: Both feet visible, close together (${ankleDistance.toFixed(3)}), airborne (${avgLegLength.toFixed(3)}) -> AIRBORNE`);
+          console.log(`🎢 ROUTINE: Airborne (${avgLegLength.toFixed(3)}) + legs close (${ankleDistance.toFixed(3)}) -> ROUTINE PHASE`);
         }
       } else {
-        // Default: still on ground or transitioning
-        isGrounded = avgLegLength > 0.10;
-        mounting = mountingPosition;
+        // Airborne but legs apart = still mounting/transitioning
+        isGrounded = false;
+        mounting = true;
+        if (Math.random() < 0.05) {
+          console.log(`⏳ TRANSITIONING: Airborne (${avgLegLength.toFixed(3)}) but legs apart (${ankleDistance.toFixed(3)}) -> STILL MOUNTING`);
+        }
       }
       
       return { grounded: isGrounded, confidence: confidence, mounting: mounting };
