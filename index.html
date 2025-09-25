@@ -1175,6 +1175,11 @@
         console.log(`🎯 Circle detection initialized at ${currentAngle.toFixed(1)}°`);
       }
       
+      // TESTING ONLY: Debug circle detection state
+      if (Math.random() < 0.02) {
+        console.log(`🔍 CIRCLE DEBUG - State: ${routineState}, Start angle: ${window.circleStartAngle?.toFixed(1)}°, Current: ${currentAngle.toFixed(1)}°`);
+      }
+      
       if (lastAngle !== null) {
         // Calculate angular difference
         let angleDiff = currentAngle - lastAngle;
@@ -1437,9 +1442,23 @@
           mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
           mediaRecorder.onstop = () => {
             // Store video blob for replay instead of downloading
-            recordedVideoBlob = new Blob(recordedChunks, { type: "video/webm" });
-            console.log('Video recorded, starting replay system');
-            startReplay();
+            if (recordedChunks.length > 0) {
+              recordedVideoBlob = new Blob(recordedChunks, { type: "video/webm" });
+              console.log('Video recorded, starting replay system');
+              startReplay();
+            } else {
+              // TESTING ONLY: Handle empty recording chunks - REMOVE AFTER TESTING
+              console.log('🎬 No video chunks recorded - skipping replay');
+              alert(`Routine Complete!\nFinal Score: ${score.toFixed(1)}\n\nClick OK to start next routine.`);
+              
+              // Reset for next routine
+              routineState = ROUTINE_STATES.WAITING;
+              startBtn.disabled = false;
+              startBtn.textContent = 'Ready for Routine';
+              poseStatus.textContent = 'Routine Complete - Ready for Next';
+              poseStatus.style.color = '#4caf50';
+              // END TESTING CODE
+            }
           };
           mediaRecorder.start();
         } catch (error) {
@@ -1457,7 +1476,24 @@
     }
     
     function endRoutineAutomatically() {
-      if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+      } else {
+        // TESTING ONLY: No recording was made (testing mode) - show final score immediately - REMOVE AFTER TESTING
+        console.log('🎬 No recording available (testing mode) - showing final score');
+        alert(`Routine Complete!\nFinal Score: ${score.toFixed(1)}\n\nClick OK to start next routine.`);
+        
+        // Immediately reset for next routine
+        routineState = ROUTINE_STATES.WAITING;
+        startBtn.disabled = false;
+        startBtn.textContent = 'Ready for Routine';
+        poseStatus.textContent = 'Routine Complete - Ready for Next';
+        poseStatus.style.color = '#4caf50';
+        
+        console.log('Routine state: ACTIVE → WAITING (ready for next routine)');
+        return;
+        // END TESTING CODE
+      }
       
       // Transition to FINISHED state - deductions now disabled
       routineState = ROUTINE_STATES.FINISHED;
