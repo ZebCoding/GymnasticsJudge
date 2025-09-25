@@ -553,7 +553,7 @@
       // If ankles are significantly below hips, likely on ground
       // If ankles are close to hip level, likely airborne
       const legLength = ankleY - hipY;
-      const isGrounded = legLength > 0.20; // Higher threshold - more generous for mounting
+      const isGrounded = legLength > 0.10; // Much lower threshold - very generous for mounting
       
       // Check visibility confidence
       const leftVis = leftAnkle.visibility || 1;
@@ -583,12 +583,14 @@
         // Track if gymnast has ever been airborne (both feet off ground)
         if (!currentlyGrounded && !hasEverBeenAirborne) {
           hasEverBeenAirborne = true;
-          console.log('🚁 Gymnast is now airborne - strict deduction rules now apply when visible');
+          const legLength = ((landmarks[27].y + landmarks[28].y) / 2) - ((landmarks[23].y + landmarks[24].y) / 2);
+          console.log(`🚁 GYMNAST NOW AIRBORNE! Leg length: ${legLength.toFixed(3)} <= 0.10 - deduction rules now apply`);
         }
         
-        // Debug ground contact occasionally
-        if (Math.random() < 0.01) {
-          console.log(`👣 Ground contact: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, Ever airborne: ${hasEverBeenAirborne}, Confidence: ${groundStatus.confidence}`);
+        // Debug ground contact more frequently during mounting
+        if (Math.random() < 0.05) {
+          const legLength = ((landmarks[27].y + landmarks[28].y) / 2) - ((landmarks[23].y + landmarks[24].y) / 2);
+          console.log(`👣 Ground: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, Leg length: ${legLength.toFixed(3)} (threshold: 0.10), Ever airborne: ${hasEverBeenAirborne}`);
         }
       }
       
