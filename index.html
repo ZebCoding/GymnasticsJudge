@@ -920,7 +920,7 @@
       // Knee angles
       const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
       const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-      const kneeThreshold = 140; // Less sensitive - was 160 (lower threshold = less strict)
+      const kneeThreshold = 120; // Much less sensitive - was 140 (only extremely bent legs)
 
       // Body width measurements
       const hipDistance = distance(leftHip, rightHip);
@@ -963,7 +963,17 @@
         // Realistic circle-based deduction system
         if (deductionRules.checkBending || deductionRules.checkSpreading) {
           // Evaluate current form quality
-          const bendingSeverity = deductionRules.checkBending ? evaluateBendingSeverity(leftKneeAngle, rightKneeAngle) : 0;
+          // Additional check: if legs are very close together, likely not bent (prevent false positives)
+          const ankleDistance = Math.abs(landmarks[27].x - landmarks[28].x);
+          const legsVeryCloseTogether = ankleDistance < 0.05;
+          
+          let bendingSeverity = 0;
+          if (deductionRules.checkBending && !legsVeryCloseTogether) {
+            bendingSeverity = evaluateBendingSeverity(leftKneeAngle, rightKneeAngle);
+          } else if (legsVeryCloseTogether && Math.random() < 0.01) {
+            console.log(`✅ Skipping bending check - legs very close together (${ankleDistance.toFixed(3)})`);
+          }
+          
           const spreadingSeverity = deductionRules.checkSpreading ? evaluateSpreadingSeverity(landmarks, hipDistance, ankleDist, kneeDist) : 0;
           
           // Track worst mistakes in current circle
@@ -1205,7 +1215,7 @@
             // 2. Total distance traveled is significant (moved around)
             const netMovement = Math.sqrt(totalMoveX * totalMoveX + totalMoveY * totalMoveY);
             
-            if (netMovement < 0.1 && totalDistance > 0.3) {
+            if (netMovement < 0.15 && totalDistance > 0.2) {
               circleCount++;
               state.lastCircleTime = now;
               state.movementHistory = []; // Reset for next circle
