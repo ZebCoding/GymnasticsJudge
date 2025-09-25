@@ -932,6 +932,15 @@
         console.log(`Measurements - Knee angles L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
         console.log(`Distances - Hips:${hipDistance.toFixed(3)} Ankles:${ankleDist.toFixed(3)} Knees:${kneeDist.toFixed(3)}`);
         console.log(`Ratios - Ankle/Hip:${(ankleDist/hipDistance).toFixed(2)} Knee/Hip:${(kneeDist/hipDistance).toFixed(2)}`);
+        
+        // Additional knee angle debugging
+        const leftBending = Math.max(0, kneeThreshold - leftKneeAngle);
+        const rightBending = Math.max(0, kneeThreshold - rightKneeAngle);
+        if (leftBending > 5 || rightBending > 5) {
+          console.log(`⚠️ POTENTIAL BENDING DETECTED - L bend:${leftBending.toFixed(1)}° R bend:${rightBending.toFixed(1)}° (threshold:${kneeThreshold}°)`);
+          console.log(`   Landmarks - LHip:(${leftHip.x.toFixed(3)},${leftHip.y.toFixed(3)}) LKnee:(${leftKnee.x.toFixed(3)},${leftKnee.y.toFixed(3)}) LAnkle:(${leftAnkle.x.toFixed(3)},${leftAnkle.y.toFixed(3)})`);
+          console.log(`   Landmarks - RHip:(${rightHip.x.toFixed(3)},${rightHip.y.toFixed(3)}) RKnee:(${rightKnee.x.toFixed(3)},${rightKnee.y.toFixed(3)}) RAnkle:(${rightAnkle.x.toFixed(3)},${rightAnkle.y.toFixed(3)})`);
+        }
       }
       
       // More sensitive legs apart detection - multiple methods
@@ -961,6 +970,7 @@
           if (bendingSeverity > currentCircleWorstBending) {
             currentCircleWorstBending = bendingSeverity;
             if (bendingSeverity > 0) {
+              console.log(`🚨 BENDING SEVERITY RECORDED: ${bendingSeverity.toFixed(1)} - L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}° (threshold:${kneeThreshold}°)`);
               recordMistakeForReplay("bending", bendingSeverity);
             }
           }
