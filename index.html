@@ -963,15 +963,29 @@
         // Realistic circle-based deduction system
         if (deductionRules.checkBending || deductionRules.checkSpreading) {
           // Evaluate current form quality
-          // Additional check: if legs are very close together, likely not bent (prevent false positives)
+          // Additional checks to prevent false positives:
+          // 1. If legs are very close together, likely not bent
+          // 2. If legs are not clearly visible, likely behind mushroom
           const ankleDistance = Math.abs(landmarks[27].x - landmarks[28].x);
-          const legsVeryCloseTogether = ankleDistance < 0.08; // More forgiving - if legs reasonably close, skip bending check
+          const legsVeryCloseTogether = ankleDistance < 0.08;
+          
+          const leftAnkleVis = (landmarks[27].visibility || 1);
+          const rightAnkleVis = (landmarks[28].visibility || 1);
+          const leftKneeVis = (landmarks[25].visibility || 1);
+          const rightKneeVis = (landmarks[26].visibility || 1);
+          const avgLegVisibility = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
+          const legsBehindMushroom = avgLegVisibility < 0.7; // Low visibility = behind mushroom
           
           let bendingSeverity = 0;
-          if (deductionRules.checkBending && !legsVeryCloseTogether) {
+          if (deductionRules.checkBending && !legsVeryCloseTogether && !legsBehindMushroom) {
             bendingSeverity = evaluateBendingSeverity(leftKneeAngle, rightKneeAngle);
-          } else if (legsVeryCloseTogether && Math.random() < 0.01) {
-            console.log(`✅ Skipping bending check - legs very close together (${ankleDistance.toFixed(3)})`);
+          } else {
+            if (legsVeryCloseTogether && Math.random() < 0.01) {
+              console.log(`✅ Skipping bending check - legs very close together (${ankleDistance.toFixed(3)})`);
+            }
+            if (legsBehindMushroom && Math.random() < 0.01) {
+              console.log(`🍄 Skipping bending check - legs behind mushroom (visibility: ${avgLegVisibility.toFixed(2)})`);
+            }
           }
           
           const spreadingSeverity = deductionRules.checkSpreading ? evaluateSpreadingSeverity(landmarks, hipDistance, ankleDist, kneeDist) : 0;
@@ -1156,94 +1170,70 @@
       if (routineState !== ROUTINE_STATES.ACTIVE) return;
       if (!hasEverBeenAirborne) return; // Only count circles during routine, not mounting
       
-      // Movement-based circle detection: track body rotation over time
-      const leftHip = landmarks[23], rightHip = landmarks[24];
+      // Visibility-based circle detection: legs going behind mushroom and coming back
       const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
+      const leftKnee = landmarks[25], rightKnee = landmarks[26];
       
-      if (!leftHip || !rightHip || !leftAnkle || !rightAnkle) return;
+      if (!leftAnkle || !rightAnkle || !leftKnee || !rightKnee) return;
       
       const now = performance.now();
       
-      // Calculate current body center and angle
-      const hipCenterX = (leftHip.x + rightHip.x) / 2;
-      const ankleCenterX = (leftAnkle.x + rightAnkle.x) / 2;
-      const bodyX = (hipCenterX + ankleCenterX) / 2;
-      const bodyY = (((leftHip.y + rightHip.y) / 2) + ((leftAnkle.y + rightAnkle.y) / 2)) / 2;
+      // Check leg visibility - lower threshold to detect when behind mushroom
+      const leftAnkleVis = (leftAnkle.visibility || 1);
+      const rightAnkleVis = (rightAnkle.visibility || 1);
+      const leftKneeVis = (leftKnee.visibility || 1);
+      const rightKneeVis = (rightKnee.visibility || 1);
+      const avgLegVisibility = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
+      const legsBehindMushroom = avgLegVisibility < 0.7; // Behind mushroom when visibility drops
       
       // Initialize circle state tracking
       if (window.circleDetectionState === undefined) {
         window.circleDetectionState = {
-          lastBodyX: bodyX,
-          lastBodyY: bodyY,
-          lastUpdateTime: now,
-          movementHistory: [],
-          circleStartTime: 0,
-          lastCircleTime: 0
+          legsBehindMushroom: legsBehindMushroom,
+          lastStateChange: now,
+          circleStartTime: 0
         };
-        console.log(`🎯 Circle detection initialized - Movement-based tracking`);
+        console.log(`🎯 Circle detection initialized - Visibility-based tracking`);
       }
       
       const state = window.circleDetectionState;
       
-      // Only update every 200ms to avoid noise
-      if (now - state.lastUpdateTime > 200) {
-        const moveX = bodyX - state.lastBodyX;
-        const moveY = bodyY - state.lastBodyY;
-        const distance = Math.sqrt(moveX * moveX + moveY * moveY);
+      // Debug visibility occasionally
+      if (Math.random() < 0.05) {
+        console.log(`👀 Legs visibility: ${avgLegVisibility.toFixed(2)} - ${legsBehindMushroom ? 'BEHIND MUSHROOM' : 'VISIBLE'}`);
+      }
+      
+      // Detect state changes
+      if (legsBehindMushroom !== state.legsBehindMushroom) {
+        state.lastStateChange = now;
         
-        // Track movement if significant
-        if (distance > 0.02) {
-          state.movementHistory.push({
-            x: bodyX,
-            y: bodyY,
-            time: now,
-            moveX: moveX,
-            moveY: moveY
-          });
-          
-          // Keep only recent movements (last 4 seconds)
-          state.movementHistory = state.movementHistory.filter(m => now - m.time < 4000);
-          
-          // Check for circular motion pattern
-          if (state.movementHistory.length > 4) {
-            const totalMoveX = state.movementHistory.reduce((sum, m) => sum + m.moveX, 0);
-            const totalMoveY = state.movementHistory.reduce((sum, m) => sum + m.moveY, 0);
-            const totalDistance = state.movementHistory.reduce((sum, m) => sum + Math.sqrt(m.moveX * m.moveX + m.moveY * m.moveY), 0);
+        if (!state.legsBehindMushroom && legsBehindMushroom) {
+          // Legs just went behind mushroom - start of circle
+          console.log(`🍄 Legs went BEHIND mushroom - circle started`);
+          state.circleStartTime = now;
+        } else if (state.legsBehindMushroom && !legsBehindMushroom) {
+          // Legs just came back from behind mushroom - circle completed!
+          const circleTime = (now - state.circleStartTime) / 1000;
+          if (circleTime > 0.5) { // Must be at least 0.5 seconds for valid circle
+            circleCount++;
+            console.log(`🎯 Circle ${circleCount} COMPLETED! Legs returned from behind mushroom (${circleTime.toFixed(1)}s)`);
             
-            // Circle detected if:
-            // 1. Net movement is small (returned to similar position)
-            // 2. Total distance traveled is significant (moved around)
-            const netMovement = Math.sqrt(totalMoveX * totalMoveX + totalMoveY * totalMoveY);
+            // Apply deduction for completed circle
+            applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
             
-            if (netMovement < 0.20 && totalDistance > 0.15) {
-              circleCount++;
-              state.lastCircleTime = now;
-              state.movementHistory = []; // Reset for next circle
-              
-              console.log(`🎯 Circle ${circleCount} COMPLETED! Net movement: ${netMovement.toFixed(3)}, Total distance: ${totalDistance.toFixed(3)}`);
-              
-              // Apply deduction for completed circle
-              applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
-              
-              // Reset for next circle
-              currentCircleWorstBending = 0;
-              currentCircleWorstSpreading = 0;
-              currentCircleStartTime = now;
-              
-              // Update display
-              circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
-            }
+            // Reset for next circle
+            currentCircleWorstBending = 0;
+            currentCircleWorstSpreading = 0;
+            currentCircleStartTime = now;
             
-            // Debug circle detection occasionally
-            if (Math.random() < 0.02) {
-              console.log(`🔄 Circle check - Net: ${netMovement.toFixed(3)}, Total: ${totalDistance.toFixed(3)}`);
-            }
+            // Update display
+            circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+          } else {
+            console.log(`⚠️ Circle too short (${circleTime.toFixed(1)}s) - not counted`);
           }
         }
         
-        state.lastBodyX = bodyX;
-        state.lastBodyY = bodyY;
-        state.lastUpdateTime = now;
+        state.legsBehindMushroom = legsBehindMushroom;
       }
     }
     
