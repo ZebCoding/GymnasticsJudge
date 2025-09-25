@@ -596,10 +596,19 @@
         lastGroundCheckTime = now;
         
         // Track if gymnast has ever been airborne (both feet off ground)
+        // But respect mounting grace period to prevent premature detection during mounting
         if (!currentlyGrounded && !hasEverBeenAirborne) {
-          hasEverBeenAirborne = true;
-          const legLength = ((landmarks[27].y + landmarks[28].y) / 2) - ((landmarks[23].y + landmarks[24].y) / 2);
-          console.log(`🚁 GYMNAST NOW AIRBORNE! Leg length: ${legLength.toFixed(3)} <= 0.10 - deduction rules now apply`);
+          const mountingGraceActive = now < mountingGracePeriod;
+          if (mountingGraceActive) {
+            const timeLeft = (mountingGracePeriod - now) / 1000;
+            if (Math.random() < 0.1) {
+              console.log(`⏳ MOUNTING GRACE PERIOD: ${timeLeft.toFixed(1)}s left - ignoring airborne detection`);
+            }
+          } else {
+            hasEverBeenAirborne = true;
+            const legLength = ((landmarks[27].y + landmarks[28].y) / 2) - ((landmarks[23].y + landmarks[24].y) / 2);
+            console.log(`🚁 GYMNAST NOW AIRBORNE! Leg length: ${legLength.toFixed(3)} - deduction rules now apply`);
+          }
         }
         
         // Debug ground contact more frequently during mounting
@@ -611,7 +620,9 @@
           const rightVis = landmarks[28].visibility || 1;
           const visibilityDiff = Math.abs(leftVis - rightVis);
           const mountingScenario = visibilityDiff > 0.3;
-          console.log(`👣 Ground: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, L:${leftLegLength.toFixed(3)} R:${rightLegLength.toFixed(3)} avg:${avgLegLength.toFixed(3)}, Mounting:${mountingScenario}, Ever airborne: ${hasEverBeenAirborne}`);
+          const mountingGraceActive = now < mountingGracePeriod;
+          const timeLeft = mountingGraceActive ? (mountingGracePeriod - now) / 1000 : 0;
+          console.log(`👣 Ground: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, L:${leftLegLength.toFixed(3)} R:${rightLegLength.toFixed(3)} avg:${avgLegLength.toFixed(3)}, Mounting:${mountingScenario}, Grace:${mountingGraceActive}(${timeLeft.toFixed(1)}s), Ever airborne: ${hasEverBeenAirborne}`);
         }
       }
       
