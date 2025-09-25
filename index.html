@@ -896,7 +896,9 @@
           console.log(`👋 SALUTE PROGRESS ${gestureHoldFrames}/${SALUTE_CONFIRM_FRAMES}`);
           if (gestureHoldFrames >= SALUTE_CONFIRM_FRAMES) {
             console.log('✅ SALUTE CONFIRMED - Starting routine!');
+            console.log(`📝 State before startRoutineAutomatically: ${routineState}`);
             startRoutineAutomatically();
+            console.log(`📝 State after startRoutineAutomatically: ${routineState}`);
           }
         } else {
           gestureHoldFrames = 0;
@@ -1476,24 +1478,7 @@
     }
     
     function endRoutineAutomatically() {
-      if (mediaRecorder && mediaRecorder.state === "recording") {
-        mediaRecorder.stop();
-      } else {
-        // TESTING ONLY: No recording was made (testing mode) - show final score immediately - REMOVE AFTER TESTING
-        console.log('🎬 No recording available (testing mode) - showing final score');
-        alert(`Routine Complete!\nFinal Score: ${score.toFixed(1)}\n\nClick OK to start next routine.`);
-        
-        // Immediately reset for next routine
-        routineState = ROUTINE_STATES.WAITING;
-        startBtn.disabled = false;
-        startBtn.textContent = 'Ready for Routine';
-        poseStatus.textContent = 'Routine Complete - Ready for Next';
-        poseStatus.style.color = '#4caf50';
-        
-        console.log('Routine state: ACTIVE → WAITING (ready for next routine)');
-        return;
-        // END TESTING CODE
-      }
+      if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
       
       // Transition to FINISHED state - deductions now disabled
       routineState = ROUTINE_STATES.FINISHED;
