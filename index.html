@@ -1131,8 +1131,6 @@
         window.circleStartAngle = currentAngle;
         window.hasPassedHalfway = false;
         console.log(`🎯 Circle detection initialized at ${currentAngle.toFixed(1)}°`);
-        console.log(`📍 Hip center: (${hipCenter.x.toFixed(3)}, ${hipCenter.y.toFixed(3)})`);
-        console.log(`📍 Shoulder center: (${shoulderCenter.x.toFixed(3)}, ${shoulderCenter.y.toFixed(3)})`);
       }
       
       
@@ -1152,13 +1150,6 @@
           totalRotation += Math.abs(angleDiff);
           lastValidPositionTime = now;
           
-          // Debug significant movements occasionally
-          if (Math.random() < 0.05) {
-            console.log(`🔄 Movement: ${currentAngle.toFixed(1)}° (diff: ${angleDiff.toFixed(1)}°, total: ${totalRotation.toFixed(1)}°)`);
-          }
-        } else if (Math.random() < 0.02) {
-          // Debug rejected movements
-          console.log(`❌ Rejected movement: diff ${angleDiff.toFixed(1)}° (too small: ${Math.abs(angleDiff) <= 3}, too big: ${Math.abs(angleDiff) >= 120})`);
         }
           
           // Track quarter-circle progress and update display
@@ -1182,7 +1173,6 @@
           if (angleFromStartNormalized > 120 && !window.hasPassedHalfway) {
             window.hasPassedHalfway = true;
             console.log(`🔄 Halfway through circle (${angleFromStartNormalized.toFixed(1)}° from start)`);
-            console.log(`🔄 Current angle: ${currentAngle.toFixed(1)}°, Start angle: ${window.circleStartAngle.toFixed(1)}°`);
           }
           
           // Check if we've returned to starting position after going halfway
@@ -1190,7 +1180,6 @@
             // Complete circle detected!
             circleCount++;
             console.log(`🎯 Circle ${circleCount} COMPLETED! Returned to start position`);
-            console.log(`🎯 Final: ${angleFromStartNormalized.toFixed(1)}° from start (${currentAngle.toFixed(1)}° vs ${window.circleStartAngle.toFixed(1)}°)`);
             
             // Apply deduction for completed circle based on worst mistakes
             if (routineState === ROUTINE_STATES.ACTIVE) {
