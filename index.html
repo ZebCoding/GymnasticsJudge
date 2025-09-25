@@ -1203,11 +1203,9 @@
             // Circle detected if:
             // 1. Net movement is small (returned to similar position)
             // 2. Total distance traveled is significant (moved around)
-            // 3. Enough time has passed since last circle
             const netMovement = Math.sqrt(totalMoveX * totalMoveX + totalMoveY * totalMoveY);
-            const timeElapsed = now - state.lastCircleTime;
             
-            if (netMovement < 0.1 && totalDistance > 0.3 && timeElapsed > 1500) {
+            if (netMovement < 0.1 && totalDistance > 0.3) {
               circleCount++;
               state.lastCircleTime = now;
               state.movementHistory = []; // Reset for next circle
@@ -1228,7 +1226,7 @@
             
             // Debug circle detection occasionally
             if (Math.random() < 0.02) {
-              console.log(`🔄 Circle check - Net: ${netMovement.toFixed(3)}, Total: ${totalDistance.toFixed(3)}, Time since last: ${(timeElapsed/1000).toFixed(1)}s`);
+              console.log(`🔄 Circle check - Net: ${netMovement.toFixed(3)}, Total: ${totalDistance.toFixed(3)}`);
             }
           }
         }
