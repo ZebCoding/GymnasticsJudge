@@ -541,25 +541,40 @@
       // Detect if gymnast's feet are on the ground or airborne
       const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
       const leftHip = landmarks[23], rightHip = landmarks[24];
+      const leftKnee = landmarks[25], rightKnee = landmarks[26];
       
       if (!leftAnkle || !rightAnkle || !leftHip || !rightHip) {
         return { grounded: true, confidence: 'low' }; // Assume grounded if can't see feet
       }
       
-      // Calculate if feet appear to be on ground based on body proportions
-      const hipY = (leftHip.y + rightHip.y) / 2;
-      const ankleY = (leftAnkle.y + rightAnkle.y) / 2;
-      
-      // If ankles are significantly below hips, likely on ground
-      // If ankles are close to hip level, likely airborne
-      const legLength = ankleY - hipY;
-      const isGrounded = legLength > 0.10; // Much lower threshold - very generous for mounting
-      
-      // Check visibility confidence
+      // Check visibility of both feet - if one is hidden, be more cautious about airborne detection
       const leftVis = leftAnkle.visibility || 1;
       const rightVis = rightAnkle.visibility || 1;
       const avgVisibility = (leftVis + rightVis) / 2;
       const confidence = avgVisibility > 0.7 ? 'high' : 'low';
+      
+      // If one foot is significantly less visible than the other, likely mounting scenario
+      const visibilityDiff = Math.abs(leftVis - rightVis);
+      const mountingScenario = visibilityDiff > 0.3; // One foot hidden behind apparatus
+      
+      // Calculate leg extension for each leg individually
+      const leftLegLength = leftAnkle.y - leftHip.y;
+      const rightLegLength = rightAnkle.y - rightHip.y;
+      
+      // For mounting scenarios, require BOTH legs to show clear airborne position
+      // For normal scenarios, use the more generous average approach
+      let isGrounded;
+      if (mountingScenario) {
+        // Both legs must be clearly airborne (closer to hips) to trigger airborne state
+        isGrounded = leftLegLength > 0.15 || rightLegLength > 0.15; // More conservative during mounting
+        if (Math.random() < 0.05) {
+          console.log(`🦶 MOUNTING SCENARIO - L:${leftLegLength.toFixed(3)} R:${rightLegLength.toFixed(3)} visDiff:${visibilityDiff.toFixed(3)} -> ${isGrounded ? 'GROUNDED' : 'AIRBORNE'}`);
+        }
+      } else {
+        // Normal scenario - use average leg position
+        const avgLegLength = (leftLegLength + rightLegLength) / 2;
+        isGrounded = avgLegLength > 0.10; // Original threshold for normal movement
+      }
       
       return { grounded: isGrounded, confidence: confidence };
     }
@@ -589,8 +604,14 @@
         
         // Debug ground contact more frequently during mounting
         if (Math.random() < 0.05) {
-          const legLength = ((landmarks[27].y + landmarks[28].y) / 2) - ((landmarks[23].y + landmarks[24].y) / 2);
-          console.log(`👣 Ground: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, Leg length: ${legLength.toFixed(3)} (threshold: 0.10), Ever airborne: ${hasEverBeenAirborne}`);
+          const leftLegLength = landmarks[27].y - landmarks[23].y;
+          const rightLegLength = landmarks[28].y - landmarks[24].y;
+          const avgLegLength = (leftLegLength + rightLegLength) / 2;
+          const leftVis = landmarks[27].visibility || 1;
+          const rightVis = landmarks[28].visibility || 1;
+          const visibilityDiff = Math.abs(leftVis - rightVis);
+          const mountingScenario = visibilityDiff > 0.3;
+          console.log(`👣 Ground: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, L:${leftLegLength.toFixed(3)} R:${rightLegLength.toFixed(3)} avg:${avgLegLength.toFixed(3)}, Mounting:${mountingScenario}, Ever airborne: ${hasEverBeenAirborne}`);
         }
       }
       
