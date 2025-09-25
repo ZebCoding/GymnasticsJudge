@@ -920,7 +920,7 @@
       // Knee angles
       const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
       const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-      const kneeThreshold = 120; // Much less sensitive - was 140 (only extremely bent legs)
+      const kneeThreshold = 100; // Extremely less sensitive - only severe bending (90° bend)
 
       // Body width measurements
       const hipDistance = distance(leftHip, rightHip);
@@ -965,7 +965,7 @@
           // Evaluate current form quality
           // Additional check: if legs are very close together, likely not bent (prevent false positives)
           const ankleDistance = Math.abs(landmarks[27].x - landmarks[28].x);
-          const legsVeryCloseTogether = ankleDistance < 0.05;
+          const legsVeryCloseTogether = ankleDistance < 0.08; // More forgiving - if legs reasonably close, skip bending check
           
           let bendingSeverity = 0;
           if (deductionRules.checkBending && !legsVeryCloseTogether) {
@@ -1205,7 +1205,7 @@
           state.movementHistory = state.movementHistory.filter(m => now - m.time < 4000);
           
           // Check for circular motion pattern
-          if (state.movementHistory.length > 6) {
+          if (state.movementHistory.length > 4) {
             const totalMoveX = state.movementHistory.reduce((sum, m) => sum + m.moveX, 0);
             const totalMoveY = state.movementHistory.reduce((sum, m) => sum + m.moveY, 0);
             const totalDistance = state.movementHistory.reduce((sum, m) => sum + Math.sqrt(m.moveX * m.moveX + m.moveY * m.moveY), 0);
@@ -1215,7 +1215,7 @@
             // 2. Total distance traveled is significant (moved around)
             const netMovement = Math.sqrt(totalMoveX * totalMoveX + totalMoveY * totalMoveY);
             
-            if (netMovement < 0.15 && totalDistance > 0.2) {
+            if (netMovement < 0.20 && totalDistance > 0.15) {
               circleCount++;
               state.lastCircleTime = now;
               state.movementHistory = []; // Reset for next circle
