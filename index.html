@@ -1167,14 +1167,6 @@
           const totalProgress = circleCount + quarterProgress;
           circleCountDisplay.textContent = `Circles: ${totalProgress.toFixed(2)}`;
           
-          // During routine, also update main score display to show circles
-          if (routineState === ROUTINE_STATES.ACTIVE) {
-            const mainScoreDisplay = document.getElementById('score');
-            if (mainScoreDisplay) {
-              mainScoreDisplay.textContent = totalProgress.toFixed(2);
-            }
-          }
-          
           // Track halfway point for completion logic
           if (angleFromStartNormalized > 120 && !window.hasPassedHalfway) {
             window.hasPassedHalfway = true;
@@ -1204,14 +1196,6 @@
             
             // Update display to show completed whole circle
             circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
-            
-            // Update main score display during routine
-            if (routineState === ROUTINE_STATES.ACTIVE) {
-              const mainScoreDisplay = document.getElementById('score');
-              if (mainScoreDisplay) {
-                mainScoreDisplay.textContent = circleCount.toFixed(2);
-              }
-            }
           }
           
           // Debug occasionally
@@ -1354,10 +1338,9 @@
       score = 10.0;
       deductionTimestamps = []; // Reset deduction timestamps
       
-      // Hide score during routine for suspense - show circle progress instead
-      scoreDisplay.parentElement.innerHTML = '<div class="score">Circles: <span id="score">0.00</span></div>';
-      const newScoreDisplay = document.getElementById('score');
-      newScoreDisplay.textContent = '0.00';
+      // Hide score during routine - will be revealed during replay
+      scoreDisplay.parentElement.style.display = 'none';
+      scoreDisplay.textContent = score.toFixed(1);
       
       // Record routine start time for video timing
       routineStartTime = performance.now();
@@ -1439,8 +1422,9 @@
       poseStatus.textContent = 'Routine Complete - Ready for Next';
       poseStatus.style.color = '#4caf50';
       
-      // Restore score display after routine ends
-      scoreDisplay.parentElement.innerHTML = '<div class="score">Final Score: <span id="score">' + score.toFixed(1) + '</span></div>';
+      // Show score display when routine ends
+      scoreDisplay.parentElement.style.display = 'block';
+      scoreDisplay.textContent = score.toFixed(1);
       
       // Don't show alert immediately - replay will handle this
       console.log(`Routine complete! Final Score: ${score.toFixed(1)}`);
@@ -1607,12 +1591,10 @@
       startBtn.disabled = false;
       startBtn.textContent = 'Ready for Routine';
       
-      // Reset score for next person and restore normal score display
+      // Reset score for next person and show score display
       score = 10.0;
-      scoreDisplay.parentElement.innerHTML = '<div class="score">Score: <span id="score">10.0</span></div>';
-      // Update reference to new score element
-      const newScoreDisplay = document.getElementById('score');
-      newScoreDisplay.textContent = score.toFixed(1);
+      scoreDisplay.parentElement.style.display = 'block';
+      scoreDisplay.textContent = score.toFixed(1);
       
       // Clear recorded data
       recordedVideoBlob = null;
