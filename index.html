@@ -1167,24 +1167,51 @@
     }
     
     function detectCircles(landmarks) {
-      if (routineState !== ROUTINE_STATES.ACTIVE) return;
-      if (!hasEverBeenAirborne) return; // Only count circles during routine, not mounting
-      // Note: Don't block on waitingForBow - bow detection happens throughout routine
+      if (routineState !== ROUTINE_STATES.ACTIVE) {
+        // Debug why circle detection is not running
+        if (Math.random() < 0.01) {
+          console.log(`🚫 Circle detection blocked - routine state: ${routineState}`);
+        }
+        return;
+      }
+      if (!hasEverBeenAirborne) {
+        if (Math.random() < 0.01) {
+          console.log(`🚫 Circle detection blocked - not airborne yet`);
+        }
+        return; // Only count circles during routine, not mounting
+      }
       
       // Visibility-based circle detection: legs going behind mushroom and coming back
       const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
       const leftKnee = landmarks[25], rightKnee = landmarks[26];
       
-      if (!leftAnkle || !rightAnkle || !leftKnee || !rightKnee) return;
+      // More lenient landmark checking - don't require perfect visibility
+      if (!leftAnkle || !rightAnkle || !leftKnee || !rightKnee) {
+        if (Math.random() < 0.02) {
+          console.log(`🚫 Circle detection - missing landmarks: LAnkle:${!!leftAnkle} RAnkle:${!!rightAnkle} LKnee:${!!leftKnee} RKnee:${!!rightKnee}`);
+        }
+        return;
+      }
       
       const now = performance.now();
       
+      // Debug: Confirm circle detection is actually running
+      if (Math.random() < 0.05) {
+        console.log(`✅ Circle detection RUNNING - hasEverBeenAirborne: ${hasEverBeenAirborne}, routineState: ${routineState}`);
+      }
+      
       // Check leg visibility with hysteresis to prevent flickering
-      const leftAnkleVis = (leftAnkle.visibility || 1);
-      const rightAnkleVis = (rightAnkle.visibility || 1);
-      const leftKneeVis = (leftKnee.visibility || 1);
-      const rightKneeVis = (rightKnee.visibility || 1);
+      // Use default visibility of 0.9 if undefined (MediaPipe sometimes doesn't provide visibility)
+      const leftAnkleVis = (leftAnkle.visibility !== undefined) ? leftAnkle.visibility : 0.9;
+      const rightAnkleVis = (rightAnkle.visibility !== undefined) ? rightAnkle.visibility : 0.9;
+      const leftKneeVis = (leftKnee.visibility !== undefined) ? leftKnee.visibility : 0.9;
+      const rightKneeVis = (rightKnee.visibility !== undefined) ? rightKnee.visibility : 0.9;
       const avgLegVisibility = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
+      
+      // Force debug output every 30 frames to ensure we can see what's happening
+      if (Math.random() < 0.033) {
+        console.log(`👀 LEG VISIBILITY DEBUG - Avg: ${avgLegVisibility.toFixed(2)} (LA:${leftAnkleVis.toFixed(2)} RA:${rightAnkleVis.toFixed(2)} LK:${leftKneeVis.toFixed(2)} RK:${rightKneeVis.toFixed(2)})`);
+      }
       
       // Additional check: don't count circles if gymnast is bowing (body very low)
       const hipY = (landmarks[23].y + landmarks[24].y) / 2;
@@ -1217,15 +1244,10 @@
         legsBehindMushroom = (avgLegVisibility < SHOW_THRESHOLD) && !isBowingDown;
       }
       
-      // Debug: Show that circle detection is running
-      if (Math.random() < 0.01) {
-        console.log(`🔄 Circle detection running - hasEverBeenAirborne: ${hasEverBeenAirborne}, routineState: ${routineState}`);
-      }
-      
-      // Debug visibility occasionally
+      // Debug visibility with state information
       if (Math.random() < 0.05) {
         const status = isBowingDown ? 'BOWING' : (legsBehindMushroom ? 'BEHIND MUSHROOM' : 'VISIBLE');
-        console.log(`👀 Legs visibility: ${avgLegVisibility.toFixed(2)}, Hip Y: ${hipY.toFixed(2)} - ${status} (Current state: ${state.legsBehindMushroom ? 'BEHIND' : 'VISIBLE'})`);
+        console.log(`👀 STATE CHECK - Visibility: ${avgLegVisibility.toFixed(2)}, Hip Y: ${hipY.toFixed(2)} - ${status} (Current state: ${state.legsBehindMushroom ? 'BEHIND' : 'VISIBLE'})`);
       }
       
       // Detect state changes
