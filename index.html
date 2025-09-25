@@ -241,7 +241,6 @@
     let routineStartTime = 0; // When routine actually started (for video timing)
     let recordedVideoBlob = null; // Store video for replay
     let deductionTimestamps = []; // Store when deductions occurred for replay pausing
-    let mountingGracePeriod = 0; // Time when mounting grace period ends
     let routineStarted = false;
     let circleCount = 0; // Count of completed circles
     
@@ -544,39 +543,58 @@
       const leftKnee = landmarks[25], rightKnee = landmarks[26];
       
       if (!leftAnkle || !rightAnkle || !leftHip || !rightHip) {
-        return { grounded: true, confidence: 'low' }; // Assume grounded if can't see feet
+        return { grounded: true, confidence: 'low', mounting: true }; // Assume grounded/mounting if can't see feet
       }
       
-      // Check visibility of both feet - if one is hidden, be more cautious about airborne detection
+      // Check visibility of both feet
       const leftVis = leftAnkle.visibility || 1;
       const rightVis = rightAnkle.visibility || 1;
       const avgVisibility = (leftVis + rightVis) / 2;
       const confidence = avgVisibility > 0.7 ? 'high' : 'low';
       
-      // If one foot is significantly less visible than the other, likely mounting scenario
-      const visibilityDiff = Math.abs(leftVis - rightVis);
-      const mountingScenario = visibilityDiff > 0.3; // One foot hidden behind apparatus
-      
-      // Calculate leg extension for each leg individually
+      // Calculate leg positions
       const leftLegLength = leftAnkle.y - leftHip.y;
       const rightLegLength = rightAnkle.y - rightHip.y;
+      const avgLegLength = (leftLegLength + rightLegLength) / 2;
       
-      // For mounting scenarios, require BOTH legs to show clear airborne position
-      // For normal scenarios, use the more generous average approach
-      let isGrounded;
-      if (mountingScenario) {
-        // Both legs must be clearly airborne (closer to hips) to trigger airborne state
-        isGrounded = leftLegLength > 0.15 || rightLegLength > 0.15; // More conservative during mounting
+      // Calculate how close legs are together (ankle distance)
+      const ankleDistance = Math.abs(leftAnkle.x - rightAnkle.x);
+      
+      // MOUNTING DETECTION: One foot behind mushroom, one in front
+      // This means: significant visibility difference OR one foot much less visible
+      const visibilityDiff = Math.abs(leftVis - rightVis);
+      const oneFootHidden = leftVis < 0.6 || rightVis < 0.6;
+      const mountingPosition = visibilityDiff > 0.3 || oneFootHidden;
+      
+      // ROUTINE DETECTION: Both feet visible and moving together in circles
+      // This means: both feet visible, relatively close together, and airborne
+      const bothFeetVisible = leftVis > 0.6 && rightVis > 0.6;
+      const legsCloseish = ankleDistance < 0.15; // Legs reasonably close together
+      const actuallyAirborne = avgLegLength < 0.10; // Standard airborne threshold
+      
+      let isGrounded, mounting;
+      
+      if (mountingPosition && !bothFeetVisible) {
+        // Still mounting - one foot behind mushroom, don't trigger airborne yet
+        isGrounded = true;
+        mounting = true;
         if (Math.random() < 0.05) {
-          console.log(`🦶 MOUNTING SCENARIO - L:${leftLegLength.toFixed(3)} R:${rightLegLength.toFixed(3)} visDiff:${visibilityDiff.toFixed(3)} -> ${isGrounded ? 'GROUNDED' : 'AIRBORNE'}`);
+          console.log(`🦶 MOUNTING: L vis:${leftVis.toFixed(2)} R vis:${rightVis.toFixed(2)}, visDiff:${visibilityDiff.toFixed(2)} -> STILL MOUNTING`);
+        }
+      } else if (bothFeetVisible && legsCloseish && actuallyAirborne) {
+        // Both feet visible and close together and airborne = routine started
+        isGrounded = false;
+        mounting = false;
+        if (Math.random() < 0.05) {
+          console.log(`🎢 ROUTINE: Both feet visible, close together (${ankleDistance.toFixed(3)}), airborne (${avgLegLength.toFixed(3)}) -> AIRBORNE`);
         }
       } else {
-        // Normal scenario - use average leg position
-        const avgLegLength = (leftLegLength + rightLegLength) / 2;
-        isGrounded = avgLegLength > 0.10; // Original threshold for normal movement
+        // Default: still on ground or transitioning
+        isGrounded = avgLegLength > 0.10;
+        mounting = mountingPosition;
       }
       
-      return { grounded: isGrounded, confidence: confidence };
+      return { grounded: isGrounded, confidence: confidence, mounting: mounting };
     }
     
     function shouldApplyDeductions(landmarks) {
@@ -596,36 +614,22 @@
         lastGroundCheckTime = now;
         
         // Track if gymnast has ever been airborne (both feet off ground)
-        // But respect mounting grace period to prevent premature detection during mounting
-        if (!currentlyGrounded && !hasEverBeenAirborne) {
-          const mountingGraceActive = now < mountingGracePeriod;
-          if (mountingGraceActive) {
-            const timeLeft = (mountingGracePeriod - now) / 1000;
-            if (Math.random() < 0.1) {
-              console.log(`⏳ MOUNTING GRACE PERIOD: ${timeLeft.toFixed(1)}s left - ignoring airborne detection`);
-            }
-          } else {
-            hasEverBeenAirborne = true;
-            const legLength = ((landmarks[27].y + landmarks[28].y) / 2) - ((landmarks[23].y + landmarks[24].y) / 2);
-            console.log(`🚁 GYMNAST NOW AIRBORNE! Leg length: ${legLength.toFixed(3)} - deduction rules now apply`);
-          }
+        // Only trigger when both feet are visible and close together (not during mounting)
+        if (!currentlyGrounded && !hasEverBeenAirborne && !groundStatus.mounting) {
+          hasEverBeenAirborne = true;
+          const legLength = ((landmarks[27].y + landmarks[28].y) / 2) - ((landmarks[23].y + landmarks[24].y) / 2);
+          console.log(`🚁 GYMNAST NOW AIRBORNE! Both feet visible and close together - deduction rules now apply`);
         }
         
-        // Debug ground contact more frequently during mounting
+        // Debug ground contact and mounting detection
         if (Math.random() < 0.05) {
           const leftLegLength = landmarks[27].y - landmarks[23].y;
           const rightLegLength = landmarks[28].y - landmarks[24].y;
           const avgLegLength = (leftLegLength + rightLegLength) / 2;
           const leftVis = landmarks[27].visibility || 1;
           const rightVis = landmarks[28].visibility || 1;
-          const visibilityDiff = Math.abs(leftVis - rightVis);
-          const mountingScenario = visibilityDiff > 0.3;
-          const mountingGraceActive = now < mountingGracePeriod;
-          const timeLeft = mountingGraceActive ? (mountingGracePeriod - now) / 1000 : 0;
-          if (Math.random() < 0.2) { // Show grace period debug more frequently
-            console.log(`🕰️ Grace Debug: now=${now}, gracePeriod=${mountingGracePeriod}, active=${mountingGraceActive}, timeLeft=${timeLeft.toFixed(3)}s`);
-          }
-          console.log(`👣 Ground: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, L:${leftLegLength.toFixed(3)} R:${rightLegLength.toFixed(3)} avg:${avgLegLength.toFixed(3)}, Mounting:${mountingScenario}, Grace:${mountingGraceActive}(${timeLeft.toFixed(1)}s), Ever airborne: ${hasEverBeenAirborne}`);
+          const ankleDistance = Math.abs(landmarks[27].x - landmarks[28].x);
+          console.log(`👣 Ground: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, L:${leftLegLength.toFixed(3)} R:${rightLegLength.toFixed(3)} avg:${avgLegLength.toFixed(3)}, Mounting:${groundStatus.mounting}, Ankle dist:${ankleDistance.toFixed(3)}, L vis:${leftVis.toFixed(2)} R vis:${rightVis.toFixed(2)}, Ever airborne: ${hasEverBeenAirborne}`);
         }
       }
       
@@ -1348,8 +1352,7 @@
       
       // Record routine start time for video timing
       routineStartTime = performance.now();
-      mountingGracePeriod = routineStartTime + 2000; // 2 second grace period for mounting
-      console.log(`⏰ Grace period set: routineStart=${routineStartTime}, gracePeriod=${mountingGracePeriod}, duration=2000ms`);
+      // No time-based grace period - use visibility-based mounting detection instead
       
       // Reset step-off detection
       baselineCenterX = null;
