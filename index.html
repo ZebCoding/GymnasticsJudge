@@ -615,11 +615,11 @@
       
       // Apply deduction rules based on ground contact and routine progress
       if (!hasEverBeenAirborne) {
-        // Beginning phase - mounting grace period
+        // Beginning phase - mounting grace period (allow bending/straddling until airborne)
         return {
           checkBending: false,
           checkSpreading: false,
-          reason: 'mounting phase - grace period'
+          reason: 'mounting phase - bending/straddling allowed until airborne'
         };
       } else if (!currentlyGrounded) {
         // Airborne - strict rules apply
@@ -1092,129 +1092,81 @@
     function detectCircles(landmarks) {
       if (routineState !== ROUTINE_STATES.ACTIVE) return;
       
-      // Fast pommel horse circle detection: track return to start position
-      // Each complete rotation back to starting position = 1 circle
-      const leftHip = landmarks[23];
-      const rightHip = landmarks[24];
-      const leftShoulder = landmarks[11];
-      const rightShoulder = landmarks[12];
+      // Pommel horse circle detection: track when legs disappear and reappear
+      // When legs go behind pommel horse (low visibility) and come back = 1 circle
+      const leftAnkle = landmarks[27];
+      const rightAnkle = landmarks[28];
+      const leftKnee = landmarks[25];
+      const rightKnee = landmarks[26];
       
-      // Check if we have all required landmarks
-      if (!leftHip || !rightHip || !leftShoulder || !rightShoulder) {
-        return;
-      }
+      // Check leg visibility - legs are "visible" if we can see ankles and knees clearly
+      const leftLegVisible = leftAnkle && leftKnee && 
+                            (leftAnkle.visibility || 1) > 0.6 && 
+                            (leftKnee.visibility || 1) > 0.6;
+      const rightLegVisible = rightAnkle && rightKnee && 
+                             (rightAnkle.visibility || 1) > 0.6 && 
+                             (rightKnee.visibility || 1) > 0.6;
       
-      // Calculate hip center (this rotates around the mushroom)
-      const hipCenter = {
-        x: (leftHip.x + rightHip.x) / 2,
-        y: (leftHip.y + rightHip.y) / 2
-      };
-      
-      // Use shoulder center as apparatus reference point (hands support here)
-      const shoulderCenter = {
-        x: (leftShoulder.x + rightShoulder.x) / 2,
-        y: (leftShoulder.y + rightShoulder.y) / 2
-      };
-      
-      // Calculate angle of hips relative to shoulder center (apparatus)
-      const deltaX = hipCenter.x - shoulderCenter.x;
-      const deltaY = hipCenter.y - shoulderCenter.y;
-      let currentAngle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
-      
-      // Normalize angle to 0-360 degrees
-      if (currentAngle < 0) currentAngle += 360;
-      
+      const bothLegsVisible = leftLegVisible && rightLegVisible;
       const now = performance.now();
       
-      // Initialize starting angle on first detection
-      if (window.circleStartAngle === undefined) {
-        window.circleStartAngle = currentAngle;
-        window.hasPassedHalfway = false;
-        console.log(`🎯 Circle detection initialized at ${currentAngle.toFixed(1)}°`);
+      // Initialize circle state tracking
+      if (window.circleDetectionState === undefined) {
+        window.circleDetectionState = {
+          legsCurrentlyVisible: bothLegsVisible,
+          lastVisibilityChange: now,
+          inCircle: false,
+          circleStartTime: 0
+        };
+        console.log(`🎯 Circle detection initialized - Legs visible: ${bothLegsVisible}`);
       }
       
+      const state = window.circleDetectionState;
       
-      if (lastAngle !== null) {
-        // Calculate angular difference
-        let angleDiff = currentAngle - lastAngle;
+      // Detect visibility changes
+      if (bothLegsVisible !== state.legsCurrentlyVisible) {
+        state.lastVisibilityChange = now;
         
-        // Handle wrap-around
-        if (angleDiff > 180) {
-          angleDiff -= 360;
-        } else if (angleDiff < -180) {
-          angleDiff += 360;
-        }
-        
-        // Only count significant movements
-        if (Math.abs(angleDiff) > 3 && Math.abs(angleDiff) < 120) {
-          totalRotation += Math.abs(angleDiff);
-          lastValidPositionTime = now;
-          
-          // Track quarter-circle progress and update display
-          const angleFromStart = Math.abs(currentAngle - window.circleStartAngle);
-          const angleFromStartNormalized = angleFromStart > 180 ? 360 - angleFromStart : angleFromStart;
-          
-          // Calculate quarter progress (0.0 to 1.0)
-          const circleProgress = angleFromStartNormalized / 360;
-          let quarterProgress = 0;
-          
-          if (circleProgress >= 0.75) quarterProgress = 0.75;
-          else if (circleProgress >= 0.5) quarterProgress = 0.5;
-          else if (circleProgress >= 0.25) quarterProgress = 0.25;
-          else quarterProgress = 0;
-          
-          // Update display with current quarter progress  
-          const totalProgress = circleCount + quarterProgress;
-          circleCountDisplay.textContent = `Circles: ${totalProgress.toFixed(2)}`;
-          
-          // Track halfway point for completion logic
-          if (angleFromStartNormalized > 120 && !window.hasPassedHalfway) {
-            window.hasPassedHalfway = true;
-            console.log(`🔄 Halfway through circle (${angleFromStartNormalized.toFixed(1)}° from start)`);
-          }
-          
-          // Check if we've returned to starting position after going halfway
-          if (window.hasPassedHalfway && angleFromStartNormalized < 30) {
+        if (!state.legsCurrentlyVisible && bothLegsVisible) {
+          // Legs just became visible (came back from behind pommel horse)
+          if (state.inCircle) {
             // Complete circle detected!
             circleCount++;
-            console.log(`🎯 Circle ${circleCount} COMPLETED! Returned to start position`);
+            console.log(`🎯 Circle ${circleCount} COMPLETED! Legs returned to view`);
             
             // Apply deduction for completed circle based on worst mistakes
-            if (routineState === ROUTINE_STATES.ACTIVE) {
-              applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
-              
-              // Reset for next circle
-              currentCircleWorstBending = 0;
-              currentCircleWorstSpreading = 0;
-              currentCircleStartTime = now;
-            }
+            applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
             
-            // Reset for next circle detection
-            window.circleStartAngle = currentAngle;
-            window.hasPassedHalfway = false;
-            totalRotation = 0;
+            // Reset for next circle
+            currentCircleWorstBending = 0;
+            currentCircleWorstSpreading = 0;
+            currentCircleStartTime = now;
+            state.inCircle = false;
             
             // Update display to show completed whole circle
             circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
           }
-          
-          // Debug occasionally
-          if (Math.random() < 0.01) {
-            console.log(`🎯 Angle: ${currentAngle.toFixed(1)}°, From start: ${angleFromStartNormalized.toFixed(1)}°, Halfway: ${window.hasPassedHalfway}`);
-          }
+        } else if (state.legsCurrentlyVisible && !bothLegsVisible) {
+          // Legs just disappeared (went behind pommel horse)
+          console.log(`🔄 Circle started - Legs disappeared behind pommel horse`);
+          state.inCircle = true;
+          state.circleStartTime = now;
         }
+        
+        state.legsCurrentlyVisible = bothLegsVisible;
       }
       
-      lastAngle = currentAngle;
+      // Show progress during circle (when legs are not visible)
+      if (state.inCircle && !bothLegsVisible) {
+        const circleProgress = Math.min((now - state.circleStartTime) / 2000, 0.9); // Max 0.9 until completion
+        const totalProgress = circleCount + circleProgress;
+        circleCountDisplay.textContent = `Circles: ${totalProgress.toFixed(2)}`;
+      }
       
-      // Reset if no movement for too long
-      if (now - lastValidPositionTime > 5000) {
-        if (window.circleStartAngle !== undefined) {
-          console.log('Circle tracking reset due to lack of movement');
-          window.circleStartAngle = undefined;
-          window.hasPassedHalfway = false;
-          totalRotation = 0;
-        }
+      // Reset if legs have been visible too long without starting a circle
+      if (bothLegsVisible && !state.inCircle && (now - state.lastVisibilityChange > 10000)) {
+        console.log('Circle detection reset - no movement detected');
+        state.lastVisibilityChange = now;
       }
     }
     
@@ -1356,16 +1308,10 @@
       landingPosition = null;
       lastStepCheckTime = 0;
       
-      // Reset circle detection
-      lastAngle = null;
-      totalRotation = 0;
-      lastValidPositionTime = 0;
+      // Reset circle detection (new visibility-based system)
       circleCount = 0;
       circleCountDisplay.textContent = 'Circles: 0.00';
-      
-      // Reset fast circle detection
-      window.circleStartAngle = undefined;
-      window.hasPassedHalfway = false;
+      window.circleDetectionState = undefined; // Reset visibility tracking
       
       // Reset ground contact tracking
       hasEverBeenAirborne = false;
@@ -1613,15 +1559,9 @@
       landingPosition = null;
       lastStepCheckTime = 0;
       
-      // Reset circle detection variables
-      lastAngle = null;
-      totalRotation = 0;
-      lastValidPositionTime = 0;
+      // Reset circle detection variables (new visibility-based system)
       circleCountDisplay.textContent = 'Circles: 0.00';
-      
-      // Reset fast circle detection
-      window.circleStartAngle = undefined;
-      window.hasPassedHalfway = false;
+      window.circleDetectionState = undefined; // Reset visibility tracking
       
       // Reset circle-based deduction tracking
       currentCircleStartTime = 0;
