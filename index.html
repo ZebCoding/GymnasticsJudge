@@ -1150,8 +1150,6 @@
           totalRotation += Math.abs(angleDiff);
           lastValidPositionTime = now;
           
-        }
-          
           // Track quarter-circle progress and update display
           const angleFromStart = Math.abs(currentAngle - window.circleStartAngle);
           const angleFromStartNormalized = angleFromStart > 180 ? 360 - angleFromStart : angleFromStart;
