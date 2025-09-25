@@ -1169,7 +1169,7 @@
     function detectCircles(landmarks) {
       if (routineState !== ROUTINE_STATES.ACTIVE) return;
       if (!hasEverBeenAirborne) return; // Only count circles during routine, not mounting
-      if (waitingForBow) return; // Don't count circles when waiting for bow (routine ending)
+      // Note: Don't block on waitingForBow - bow detection happens throughout routine
       
       // Visibility-based circle detection: legs going behind mushroom and coming back
       const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
@@ -1190,7 +1190,12 @@
       const hipY = (landmarks[23].y + landmarks[24].y) / 2;
       const isBowingDown = hipY > 0.6; // Body center too low = bowing, not circles
       
-      const legsBehindMushroom = avgLegVisibility < 0.8 && !isBowingDown; // Behind mushroom when visibility drops AND not bowing
+      const legsBehindMushroom = avgLegVisibility < 0.75 && !isBowingDown; // Behind mushroom when visibility drops AND not bowing
+      
+      // Debug: Show that circle detection is running
+      if (Math.random() < 0.01) {
+        console.log(`🔄 Circle detection running - hasEverBeenAirborne: ${hasEverBeenAirborne}, routineState: ${routineState}`);
+      }
       
       // Initialize circle state tracking
       if (window.circleDetectionState === undefined) {
