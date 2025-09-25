@@ -1198,14 +1198,14 @@
           circleStartTime: 0,
           lastCircleEndTime: 0 // Track when last circle ended to prevent rapid counting
         };
-        console.log(`🎯 Circle detection initialized - Visibility-based tracking with hysteresis`);
+        console.log(`🎯 Circle detection initialized - Counting every VISIBLE→BEHIND→VISIBLE transition as a circle`);
       }
       
       const state = window.circleDetectionState;
       
       // Hysteresis thresholds to prevent rapid state changes
-      const HIDE_THRESHOLD = 0.85; // Legs must be very visible to be considered "not behind mushroom"
-      const SHOW_THRESHOLD = 0.70; // Legs can be somewhat visible and still be "behind mushroom"
+      const HIDE_THRESHOLD = 0.80; // Legs must be visible to be considered "not behind mushroom" 
+      const SHOW_THRESHOLD = 0.60; // More sensitive - legs can be quite visible and still count as "behind mushroom"
       
       // Determine current visibility state using hysteresis
       let legsBehindMushroom;
@@ -1248,10 +1248,11 @@
           const circleTime = (now - state.circleStartTime) / 1000;
           const timeSinceLastCircle = (now - state.lastCircleEndTime) / 1000;
           
-          // More lenient timing: 0.2 seconds minimum (was 0.5) and prevent duplicate counts
-          if (circleTime > 0.2 && timeSinceLastCircle > 0.3) {
+          // Count EVERY hide→show transition as a circle (no minimum time)
+          // Only prevent very rapid duplicates (less than 0.1s apart)
+          if (timeSinceLastCircle > 0.1) {
             circleCount++;
-            console.log(`🎯 Circle ${circleCount} COMPLETED! Legs returned from behind mushroom (${circleTime.toFixed(1)}s, visibility: ${avgLegVisibility.toFixed(2)})`);
+            console.log(`🎯 Circle ${circleCount} COMPLETED! Legs returned from behind mushroom (${circleTime.toFixed(2)}s duration, visibility: ${avgLegVisibility.toFixed(2)})`);
             
             // Apply deduction for completed circle
             applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
@@ -1265,11 +1266,7 @@
             // Update display
             circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
           } else {
-            if (circleTime <= 0.2) {
-              console.log(`⚠️ Circle too short (${circleTime.toFixed(1)}s) - not counted`);
-            } else {
-              console.log(`⚠️ Circle too close to previous (${timeSinceLastCircle.toFixed(1)}s since last) - not counted`);
-            }
+            console.log(`⚠️ Circle too rapid (${timeSinceLastCircle.toFixed(3)}s since last) - likely detection noise`);
           }
         }
         
