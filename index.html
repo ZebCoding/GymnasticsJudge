@@ -615,25 +615,25 @@
       
       // Apply deduction rules based on ground contact and routine progress
       if (!hasEverBeenAirborne) {
-        // Beginning phase - mounting grace period (allow bending/straddling until airborne)
+        // Beginning phase - mounting (feet on ground): bending OK, straddling OK
         return {
           checkBending: false,
           checkSpreading: false,
-          reason: 'mounting phase - bending/straddling allowed until airborne'
+          reason: 'mounting phase - feet on ground, bending/straddling allowed'
         };
       } else if (!currentlyGrounded) {
-        // Airborne - strict rules apply
+        // Airborne during routine: NO bending, NO straddling allowed  
         return {
           checkBending: true,
           checkSpreading: true,
-          reason: 'airborne - strict rules'
+          reason: 'airborne - no bending/straddling allowed'
         };
       } else {
-        // Landed after being airborne - allow bending but not spreading
+        // Landed after routine: bending OK, NO straddling
         return {
           checkBending: false,
           checkSpreading: true,
-          reason: 'landed - allow bending, no spreading'
+          reason: 'landed after routine - bending OK, no straddling'
         };
       }
     }
@@ -1125,10 +1125,16 @@
       
       const state = window.circleDetectionState;
       
-      // Debug visibility occasionally
-      if (Math.random() < 0.02) {
-        console.log(`👀 Visibility: Left leg ${leftLegVisible ? 'visible' : 'hidden'}, Right leg ${rightLegVisible ? 'visible' : 'hidden'}, Either visible: ${legsVisible}`);
-        console.log(`🔄 Circle state: In circle: ${state.inCircle}, Currently visible: ${state.legsCurrentlyVisible}`);
+      // Debug visibility more frequently to catch circle transitions
+      if (Math.random() < 0.05) {
+        const leftAnkleVis = leftAnkle ? (leftAnkle.visibility || 1).toFixed(2) : 'missing';
+        const rightAnkleVis = rightAnkle ? (rightAnkle.visibility || 1).toFixed(2) : 'missing';
+        const leftKneeVis = leftKnee ? (leftKnee.visibility || 1).toFixed(2) : 'missing';
+        const rightKneeVis = rightKnee ? (rightKnee.visibility || 1).toFixed(2) : 'missing';
+        
+        console.log(`👀 L: ankle(${leftAnkleVis}) knee(${leftKneeVis}) = ${leftLegVisible ? 'VIS' : 'HIDDEN'}`);
+        console.log(`👀 R: ankle(${rightAnkleVis}) knee(${rightKneeVis}) = ${rightLegVisible ? 'VIS' : 'HIDDEN'}`);
+        console.log(`🔄 Either visible: ${legsVisible}, In circle: ${state.inCircle}, Was: ${state.legsCurrentlyVisible}`);
       }
       
       // Detect visibility changes
