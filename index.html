@@ -622,6 +622,9 @@
           const mountingScenario = visibilityDiff > 0.3;
           const mountingGraceActive = now < mountingGracePeriod;
           const timeLeft = mountingGraceActive ? (mountingGracePeriod - now) / 1000 : 0;
+          if (Math.random() < 0.2) { // Show grace period debug more frequently
+            console.log(`🕰️ Grace Debug: now=${now}, gracePeriod=${mountingGracePeriod}, active=${mountingGraceActive}, timeLeft=${timeLeft.toFixed(3)}s`);
+          }
           console.log(`👣 Ground: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, L:${leftLegLength.toFixed(3)} R:${rightLegLength.toFixed(3)} avg:${avgLegLength.toFixed(3)}, Mounting:${mountingScenario}, Grace:${mountingGraceActive}(${timeLeft.toFixed(1)}s), Ever airborne: ${hasEverBeenAirborne}`);
         }
       }
@@ -1346,6 +1349,7 @@
       // Record routine start time for video timing
       routineStartTime = performance.now();
       mountingGracePeriod = routineStartTime + 2000; // 2 second grace period for mounting
+      console.log(`⏰ Grace period set: routineStart=${routineStartTime}, gracePeriod=${mountingGracePeriod}, duration=2000ms`);
       
       // Reset step-off detection
       baselineCenterX = null;
