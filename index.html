@@ -1235,7 +1235,7 @@
       
       // Calculate hip position relative to mushroom center
       const relativeHipX = hipCenterX - state.mushroomCenterX;
-      const oscillationThreshold = 0.08; // More sensitive - smaller movements count as left/right
+      const oscillationThreshold = 0.03; // Very sensitive - detect small hip movements
       
       // Determine current oscillation position
       let currentPosition;
