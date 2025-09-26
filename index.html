@@ -988,7 +988,17 @@
             }
           }
           
-          const spreadingSeverity = deductionRules.checkSpreading ? evaluateSpreadingSeverity(landmarks, hipDistance, ankleDist, kneeDist) : 0;
+          let spreadingSeverity = 0;
+          if (deductionRules.checkSpreading && !legsVeryCloseTogether && !legsBehindMushroom) {
+            spreadingSeverity = evaluateSpreadingSeverity(landmarks, hipDistance, ankleDist, kneeDist);
+          } else {
+            if (legsVeryCloseTogether && Math.random() < 0.01) {
+              console.log(`✅ Skipping spreading check - legs very close together (${ankleDistance.toFixed(3)})`);
+            }
+            if (legsBehindMushroom && Math.random() < 0.01) {
+              console.log(`🍄 Skipping spreading check - legs behind mushroom (visibility: ${avgLegVisibility.toFixed(2)})`);
+            }
+          }
           
           // Track worst mistakes in current circle
           if (bendingSeverity > currentCircleWorstBending) {
@@ -1186,8 +1196,10 @@
       
       if (!leftAnkle || !rightAnkle) {
         if (Math.random() < 0.02) {
-          console.log(`🚫 Circle detection - missing foot landmarks`);
+          console.log(`🚫 Circle detection - missing foot landmarks, skipping frame but preserving tracking`);
         }
+        // Skip this frame but don't reset circle tracking state
+        // This preserves any ongoing circle sequence when landmarks are temporarily unavailable
         return;
       }
       
