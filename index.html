@@ -1180,27 +1180,27 @@
         return; // Only count circles during routine, not mounting
       }
       
-      // Get required landmarks for mushroom-center and hip tracking
+      // Get required landmarks for mushroom-center and foot tracking
       const leftWrist = landmarks[15], rightWrist = landmarks[16];
-      const leftHip = landmarks[23], rightHip = landmarks[24];
+      const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
       
-      if (!leftHip || !rightHip) {
+      if (!leftAnkle || !rightAnkle) {
         if (Math.random() < 0.02) {
-          console.log(`🚫 Circle detection - missing hip landmarks`);
+          console.log(`🚫 Circle detection - missing foot landmarks`);
         }
         return;
       }
       
       const now = performance.now();
-      const hipCenterX = (leftHip.x + rightHip.x) / 2;
-      const hipCenterY = (leftHip.y + rightHip.y) / 2;
+      const footCenterX = (leftAnkle.x + rightAnkle.x) / 2;
+      const footCenterY = (leftAnkle.y + rightAnkle.y) / 2;
       
-      // Initialize mushroom-center detection and hip oscillation tracking
+      // Initialize mushroom-center detection and foot oscillation tracking
       if (window.circleDetectionState === undefined) {
         window.circleDetectionState = {
           mushroomCenterX: null,
           mushroomCenterY: null,
-          lastHipPosition: { x: hipCenterX, y: hipCenterY },
+          lastFootPosition: { x: footCenterX, y: footCenterY },
           oscillationState: 'center', // 'left', 'center', 'right'
           lastCircleTime: 0,
           pendingCircleStart: null // Track when we start going to one side
@@ -1213,7 +1213,7 @@
           console.log(`🍄 Mushroom center detected at (${window.circleDetectionState.mushroomCenterX.toFixed(3)}, ${window.circleDetectionState.mushroomCenterY.toFixed(3)})`);
         }
         
-        console.log(`🎯 Circle detection initialized - Hip oscillation tracking around mushroom center`);
+        console.log(`🎯 Circle detection initialized - Foot oscillation tracking around mushroom center`);
       }
       
       const state = window.circleDetectionState;
@@ -1233,23 +1233,23 @@
         return;
       }
       
-      // Calculate hip position relative to mushroom center
-      const relativeHipX = hipCenterX - state.mushroomCenterX;
-      const oscillationThreshold = 0.03; // Very sensitive - detect small hip movements
+      // Calculate foot position relative to mushroom center
+      const relativeFootX = footCenterX - state.mushroomCenterX;
+      const oscillationThreshold = 0.08; // Feet move more dramatically than hips
       
       // Determine current oscillation position
       let currentPosition;
-      if (relativeHipX < -oscillationThreshold) {
+      if (relativeFootX < -oscillationThreshold) {
         currentPosition = 'left';
-      } else if (relativeHipX > oscillationThreshold) {
+      } else if (relativeFootX > oscillationThreshold) {
         currentPosition = 'right';
       } else {
         currentPosition = 'center';
       }
       
-      // Debug hip oscillation occasionally
+      // Debug foot oscillation occasionally
       if (Math.random() < 0.05) {
-        console.log(`🔄 Hip tracking - RelativeX: ${relativeHipX.toFixed(3)}, Position: ${currentPosition}, Last: ${state.oscillationState}`);
+        console.log(`🔄 Foot tracking - RelativeX: ${relativeFootX.toFixed(3)}, Position: ${currentPosition}, Last: ${state.oscillationState}`);
       }
       
       // Detect complete oscillation cycles: center → left → center → right → center = 1 circle
@@ -1261,7 +1261,7 @@
           return;
         }
         
-        console.log(`🔄 Hip oscillation: ${state.oscillationState} → ${currentPosition}`);
+        console.log(`🔄 Foot oscillation: ${state.oscillationState} → ${currentPosition}`);
         
         // Track circle completion: full left-to-right or right-to-left swing
         if ((state.oscillationState === 'left' && currentPosition === 'right') || 
@@ -1269,7 +1269,7 @@
           
           // Complete swing detected - count as circle
           circleCount++;
-          console.log(`🎯 Circle ${circleCount} COMPLETED! Hip swung from ${state.oscillationState} to ${currentPosition}`);
+          console.log(`🎯 Circle ${circleCount} COMPLETED! Feet swung from ${state.oscillationState} to ${currentPosition}`);
           
           // Apply deduction for completed circle
           applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
@@ -1287,7 +1287,7 @@
       }
       
       // Update last position for next frame
-      state.lastHipPosition = { x: hipCenterX, y: hipCenterY };
+      state.lastFootPosition = { x: footCenterX, y: footCenterY };
     }
     
     function applyCircleDeduction(circleNumber, bendingSeverity, spreadingSeverity) {
