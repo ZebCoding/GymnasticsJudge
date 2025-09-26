@@ -203,6 +203,7 @@
       <div class="status-info">
         <div id="poseStatus">Pose: Not detecting</div>
         <div id="circleCount" style="font-size: 1.5em; font-weight: bold; margin-top: 5px;">Circles: 0.00</div>
+        <div id="deductionCount" style="font-size: 1.3em; font-weight: bold; margin-top: 5px; color: #ff6b6b;">Deductions: 0</div>
       </div>
     </div>
     
@@ -225,6 +226,7 @@
     const scoreDisplay = document.getElementById('score');
     const poseStatus = document.getElementById('poseStatus');
     const circleCountDisplay = document.getElementById('circleCount');
+    const deductionCountDisplay = document.getElementById('deductionCount');
     const replaySection = document.getElementById('replaySection');
     const replayVideo = document.getElementById('replayVideo');
     const replayStatus = document.getElementById('replayStatus');
@@ -235,6 +237,7 @@
     
 
     let score = 10.0;
+    let totalDeductions = 0; // Total number of deductions applied
     let mediaStream;
     let mediaRecorder;
     let recordedChunks = [];
@@ -1390,6 +1393,10 @@
       // Apply the deduction
       score = Math.max(5.0, score - worstMistake);
       
+      // Increment deduction counter
+      totalDeductions++;
+      deductionCountDisplay.textContent = `Deductions: ${totalDeductions}`;
+      
       // Create descriptive reason
       let reason = `Circle ${circleNumber}: `;
       if (worstMistake === 0.1) reason += "Minor form break";
@@ -1404,7 +1411,7 @@
         reason += " (legs spread)";
       }
       
-      console.log(`🔄 CIRCLE ${circleNumber} COMPLETE: Deduction -${worstMistake} (${reason}) - Score: ${score.toFixed(1)}`);
+      console.log(`🔄 CIRCLE ${circleNumber} COMPLETE: Deduction ${totalDeductions} -${worstMistake} (${reason}) - Score: ${score.toFixed(1)}`);
       
       // Record for replay - but don't pause at circle completion, pause happened during mistake
       circleDeductions.push({
@@ -1428,13 +1435,17 @@
       // Apply the deduction
       score = Math.max(5.0, score - stepSeverity);
       
+      // Increment deduction counter
+      totalDeductions++;
+      deductionCountDisplay.textContent = `Deductions: ${totalDeductions}`;
+      
       // Create descriptive reason
       let reason = `Step ${stepNumber}: `;
       if (stepSeverity === 0.1) reason += "Small step";
       else if (stepSeverity === 0.2) reason += "Medium step";
       else reason += "Large step";
       
-      console.log(`👣 STEP DEDUCTION: -${stepSeverity} (${reason}) - Score: ${score.toFixed(1)}`);
+      console.log(`👣 STEP DEDUCTION ${totalDeductions}: -${stepSeverity} (${reason}) - Score: ${score.toFixed(1)}`);
       
       // Record timestamp for replay pausing
       deductionTimestamps.push({
@@ -1493,11 +1504,13 @@
       
       // Reset score & tracking
       score = 10.0;
+      totalDeductions = 0;
       deductionTimestamps = []; // Reset deduction timestamps
       
       // Hide score during routine - will be revealed during replay
       scoreDisplay.parentElement.style.display = 'none';
       scoreDisplay.textContent = score.toFixed(1);
+      deductionCountDisplay.textContent = 'Deductions: 0';
       
       // Record routine start time for video timing
       routineStartTime = performance.now();
@@ -1746,8 +1759,10 @@
       
       // Reset score for next person and show score display
       score = 10.0;
+      totalDeductions = 0;
       scoreDisplay.parentElement.style.display = 'block';
       scoreDisplay.textContent = score.toFixed(1);
+      deductionCountDisplay.textContent = 'Deductions: 0';
       
       // Clear recorded data
       recordedVideoBlob = null;
