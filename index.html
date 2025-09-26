@@ -1303,22 +1303,47 @@
           steps.push(currentPosition);
           console.log(`🔄 Circle step: ${currentPosition} (sequence: [${steps.slice(-4).join(' → ')}])`);
           
-          // Circle detection: Require full oscillation cycle before counting
-          // A complete circle = left → center → right → center OR right → center → left → center
+          // Circle detection: Check for complete oscillation patterns
+          // Pattern 1: Full cycle through center: left → center → right → center
+          // Pattern 2: Direct side-to-side: left → right (for quick/small circles)
+          let isFullCircle = false;
+          let circlePattern = [];
+          let circleType = '';
+          
+          // Check for 4-step pattern first (preferred)
           if (steps.length >= 4) {
             const lastFour = steps.slice(-4);
             const [step1, step2, step3, step4] = lastFour;
             
-            // Full circle pattern: side → center → opposite_side → center
-            const isFullCircle = (
-              step2 === 'center' && step4 === 'center' && 
-              ((step1 === 'left' && step3 === 'right') || (step1 === 'right' && step3 === 'left'))
-            );
+            if (step2 === 'center' && step4 === 'center' && 
+                ((step1 === 'left' && step3 === 'right') || (step1 === 'right' && step3 === 'left'))) {
+              isFullCircle = true;
+              circlePattern = lastFour;
+              circleType = 'full cycle';
+            }
+          }
+          
+          // Check for 3-step pattern as fallback
+          if (!isFullCircle && steps.length >= 3) {
+            const lastThree = steps.slice(-3);
+            const [step1, step2, step3] = lastThree;
+            
+            // Either: side → center → opposite_side OR side → opposite_side (direct)
+            if (((step2 === 'center' || step1 !== step3) && 
+                 ((step1 === 'left' && step3 === 'right') || (step1 === 'right' && step3 === 'left')))) {
+              isFullCircle = true;
+              circlePattern = lastThree;
+              circleType = step2 === 'center' ? 'through center' : 'direct side-to-side';
+            }
+          }
             
             if (isFullCircle) {
-              const currentRotation = `${step1}-${step3}`;  // e.g., "left-right" or "right-left"
+              // Determine rotation direction from the pattern
+              const step1 = circlePattern[0];
+              const step3 = circlePattern[circlePattern.length >= 4 ? 2 : circlePattern.length - 1];
+              const currentRotation = `${step1}-${step3}`;
               
-              console.log(`🔍 Potential circle detected: ${lastFour.join(' → ')} (${step1} to ${step3})`);
+              console.log(`🔍 Potential circle detected: ${circlePattern.join(' → ')} (${step1} to ${step3}) - ${circleType}`);
               console.log(`   Current rotation: ${currentRotation}, Expected: ${state.rotationDirection || 'Learning...'}`);
               
               // If this is the first circle, learn the rotation direction
@@ -1330,7 +1355,7 @@
               // Only count circles that match the learned rotation direction
               if (currentRotation === state.rotationDirection) {
                 circleCount++;
-                console.log(`🎯 Circle ${circleCount} COMPLETED! Pattern: ${lastFour.join(' → ')} (matches rotation)`);
+                console.log(`🎯 Circle ${circleCount} COMPLETED! Pattern: ${circlePattern.join(' → ')} (${circleType} - matches rotation)`);
                 
                 // Apply deduction for completed circle
                 applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
@@ -1344,8 +1369,9 @@
                 // Update display
                 circleCountDisplay.textContent = `Circles: ${circleCount}`;
                 
-                // Keep only last 2 positions to continue tracking next circle
-                steps.splice(0, 2); // Remove first 2 positions, keep [step3, step4] for next sequence
+                // Keep the last position as starting point for next circle
+                steps.length = 0; // Clear sequence
+                steps.push(step3); // Start new sequence from the end position
               } else {
                 console.log(`❌ Circle skipped - wrong rotation direction (${currentRotation} != ${state.rotationDirection})`);
                 // Don't clear the sequence for wrong direction circles, let it continue tracking
