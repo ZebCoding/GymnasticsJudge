@@ -1281,12 +1281,15 @@
           steps.push(currentPosition);
           console.log(`🔄 Circle step: ${currentPosition} (sequence: [${steps.slice(-4).join(' → ')}])`);
           
-          // Check if we completed a circle: side → center → side → center
+          // Check if we completed a circle - multiple valid patterns:
+          // 1. side → center → side → center (standard)
+          // 2. side → side (direct transition - also counts)
+          
           if (steps.length >= 4) {
             const lastFour = steps.slice(-4);
             const [step1, step2, step3, step4] = lastFour;
             
-            // Pattern: side → center → side → center (any sides work)
+            // Pattern 1: side → center → side → center (any sides work)
             if (step2 === 'center' && step4 === 'center' && 
                 (step1 === 'left' || step1 === 'right') && 
                 (step3 === 'left' || step3 === 'right')) {
@@ -1307,6 +1310,32 @@
               
               // Keep only the last position to start next circle
               steps.length = 1; // Keep current position as start of next sequence
+            }
+          } else if (steps.length >= 2) {
+            // Pattern 2: Check for direct side-to-side transitions (also counts as circle)
+            const lastTwo = steps.slice(-2);
+            const [prev, curr] = lastTwo;
+            
+            if ((prev === 'left' || prev === 'right') && 
+                (curr === 'left' || curr === 'right') && 
+                prev !== curr) {
+              
+              circleCount++;
+              console.log(`🎯 Circle ${circleCount} COMPLETED! Direct transition: ${lastTwo.join(' → ')}`);
+              
+              // Apply deduction for completed circle
+              applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
+              
+              // Reset for next circle
+              currentCircleWorstBending = 0;
+              currentCircleWorstSpreading = 0;
+              state.lastCircleTime = now;
+              
+              // Update display
+              circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+              
+              // Keep only the last position to start next circle
+              steps.length = 1;
             }
           }
           
@@ -1478,6 +1507,8 @@
       currentCircleDeductionApplied = false;
       circleDeductions = [];
       window.stepCount = 0; // Reset step counter
+      
+      console.log('🧹 All deduction tracking reset - starting fresh for new routine');
       
       console.log('Routine start time recorded for video timing');
       console.log('Realistic circle-based deduction system initialized');
