@@ -1223,6 +1223,8 @@
           lastFootPosition: { x: footCenterX, y: footCenterY },
           oscillationState: 'center', // 'left', 'center', 'right'
           lastCircleTime: 0,
+          lastCircleCountTime: 0,
+          lastCirclePattern: '',
           pendingCircleStart: null // Track when we start going to one side
         };
         
@@ -1301,34 +1303,54 @@
           steps.push(currentPosition);
           console.log(`🔄 Circle step: ${currentPosition} (sequence: [${steps.slice(-4).join(' → ')}])`);
           
-          // Simplified circle detection: side → center → opposite_side → center = 1 circle
-          // This prevents double counting and ensures consistent detection
-          if (steps.length >= 4) {
-            const lastFour = steps.slice(-4);
-            const [step1, step2, step3, step4] = lastFour;
+          // Circle detection: Track side-to-side oscillation to count complete circles
+          // A circle is complete when we go from one side all the way to the opposite side
+          if (steps.length >= 3) {
+            const recentSteps = steps.slice(-3); // Look at last 3 positions
+            const [step1, step2, step3] = recentSteps;
             
-            // Must be: side → center → different_side → center
-            if (step2 === 'center' && step4 === 'center' && 
-                (step1 === 'left' || step1 === 'right') && 
-                (step3 === 'left' || step3 === 'right') &&
-                step1 !== step3) { // Must go to different sides
+            // Circle pattern: left → (center) → right OR right → (center) → left
+            // Center position is optional - gymnast might skip exact center
+            const isCircle = (
+              (step1 === 'left' && step3 === 'right') || 
+              (step1 === 'right' && step3 === 'left')
+            ) && (step2 === 'center' || step1 !== step3); // Either through center or direct side-to-side
+            
+            if (isCircle) {
+              // Check if this is a new circle (not already counted)
+              const lastCirclePattern = state.lastCirclePattern || '';
+              const currentPattern = `${step1}-${step3}`;
               
-              circleCount++;
-              console.log(`🎯 Circle ${circleCount} COMPLETED! Pattern: ${lastFour.join(' → ')}`);
+              // Only count if it's different from the last circle pattern or enough time has passed
+              const timeSinceLastCircle = (now - (state.lastCircleCountTime || 0)) / 1000;
               
-              // Apply deduction for completed circle
-              applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
+              console.log(`🔍 Potential circle detected: ${recentSteps.join(' → ')} (${step1} to ${step3})`);
+              console.log(`   Current pattern: ${currentPattern}, Last pattern: ${lastCirclePattern}`);
+              console.log(`   Time since last circle: ${timeSinceLastCircle.toFixed(1)}s`);
               
-              // Reset for next circle
-              currentCircleWorstBending = 0;
-              currentCircleWorstSpreading = 0;
-              state.lastCircleTime = now;
-              
-              // Update display
-              circleCountDisplay.textContent = `Circles: ${circleCount}`;
-              
-              // Keep only the last two positions to continue sequence
-              steps.splice(0, steps.length - 2);
+              if (currentPattern !== lastCirclePattern || timeSinceLastCircle > 2.0) {
+                circleCount++;
+                console.log(`🎯 Circle ${circleCount} COMPLETED! Pattern: ${recentSteps.join(' → ')} (${step1} to ${step3})`);
+                
+                // Apply deduction for completed circle
+                applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
+                
+                // Reset for next circle
+                currentCircleWorstBending = 0;
+                currentCircleWorstSpreading = 0;
+                state.lastCircleTime = now;
+                state.lastCircleCountTime = now;
+                state.lastCirclePattern = currentPattern;
+                
+                // Update display
+                circleCountDisplay.textContent = `Circles: ${circleCount}`;
+                
+                // Clear sequence to start fresh for next circle
+                steps.length = 0;
+                steps.push(step3); // Keep the ending position as start of next
+              } else {
+                console.log(`❌ Circle skipped - same pattern as previous or too recent`);
+              }
             }
           }
           
