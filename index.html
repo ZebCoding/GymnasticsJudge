@@ -1030,9 +1030,11 @@
             }
           }
           
-          // Debug current form quality occasionally
-          if (Math.random() < 0.005) {
+          // Debug current form quality occasionally - MORE FREQUENT FOR DEBUGGING
+          if (Math.random() < 0.05) {
             console.log(`🔍 Form check - Bending: ${bendingSeverity.toFixed(1)}, Spreading: ${spreadingSeverity.toFixed(1)}, Circle worst: B${currentCircleWorstBending.toFixed(1)}/S${currentCircleWorstSpreading.toFixed(1)}`);
+            console.log(`🔍 Visibility debug - avgLegVisibility: ${avgLegVisibility.toFixed(2)}, legsBehindMushroom: ${legsBehindMushroom}, legsVeryClose: ${legsVeryCloseTogether}, ankleDistance: ${ankleDistance.toFixed(3)}`);
+            console.log(`🔍 Angles - L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}° (threshold:${kneeThreshold}°)`);
           }
         } else {
           // Log when deductions are not being applied
