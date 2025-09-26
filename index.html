@@ -1263,24 +1263,41 @@
         
         console.log(`🔄 Foot oscillation: ${state.oscillationState} → ${currentPosition}`);
         
-        // Track circle completion: full left-to-right or right-to-left swing
-        if ((state.oscillationState === 'left' && currentPosition === 'right') || 
-            (state.oscillationState === 'right' && currentPosition === 'left')) {
-          
-          // Complete swing detected - count as circle
-          circleCount++;
-          console.log(`🎯 Circle ${circleCount} COMPLETED! Feet swung from ${state.oscillationState} to ${currentPosition}`);
-          
-          // Apply deduction for completed circle
-          applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
-          
-          // Reset for next circle
-          currentCircleWorstBending = 0;
-          currentCircleWorstSpreading = 0;
-          state.lastCircleTime = now;
-          
-          // Update display
-          circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+        // Track complete oscillation cycles: track when we complete a full cycle
+        // A full cycle is: center → side → center → opposite side → center
+        
+        // Initialize cycle tracking if not exists
+        if (!state.cycleTracking) {
+          state.cycleTracking = {
+            lastSide: null, // Track the last side we visited ('left' or 'right')
+            waitingForOppositeSide: false // Are we waiting to go to the opposite side?
+          };
+        }
+        
+        // Only count when we go to a side (not center)
+        if (currentPosition === 'left' || currentPosition === 'right') {
+          if (state.cycleTracking.lastSide === null) {
+            // First side visited - just record it
+            state.cycleTracking.lastSide = currentPosition;
+            console.log(`🔄 Starting circle tracking from ${currentPosition} side`);
+          } else if (state.cycleTracking.lastSide !== currentPosition) {
+            // We've swung to the opposite side - complete circle!
+            circleCount++;
+            console.log(`🎯 Circle ${circleCount} COMPLETED! Full oscillation: ${state.cycleTracking.lastSide} → ${currentPosition}`);
+            
+            // Apply deduction for completed circle
+            applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
+            
+            // Reset for next circle
+            currentCircleWorstBending = 0;
+            currentCircleWorstSpreading = 0;
+            state.lastCircleTime = now;
+            state.cycleTracking.lastSide = currentPosition; // Update for next cycle
+            
+            // Update display
+            circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+          }
+          // If same side as before, just continue (no action needed)
         }
         
         state.oscillationState = currentPosition;
