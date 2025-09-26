@@ -982,12 +982,12 @@
           let bendingSeverity = 0;
           if (deductionRules.checkBending && !legsVeryCloseTogether && !legsBehindMushroom) {
             // Additional validation: check for extreme angle readings that might be pose detection errors
-            const leftValid = leftKneeAngle > 30 && leftKneeAngle < 190; // Reasonable angle range
-            const rightValid = rightKneeAngle > 30 && rightKneeAngle < 190;
-            const bothKneesVisible = (landmarks[25].visibility || 1) > 0.7 && (landmarks[26].visibility || 1) > 0.7;
+            const leftValid = leftKneeAngle > 20 && leftKneeAngle < 200; // More permissive angle range
+            const rightValid = rightKneeAngle > 20 && rightKneeAngle < 200;
+            const bothKneesVisible = (landmarks[25].visibility || 1) > 0.5 && (landmarks[26].visibility || 1) > 0.5; // Lower visibility threshold
             
             if (leftValid && rightValid && bothKneesVisible) {
-              bendingSeverity = evaluateBendingSeverity(leftKneeAngle, rightKneeAngle);
+              bendingSeverity = evaluateBendingSeverity(leftKneeAngle, rightKneeAngle, kneeThreshold);
             } else {
               if (Math.random() < 0.01) {
                 console.log(`⚠️ Skipping bending check - suspicious angle readings L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}° or low knee visibility`);
