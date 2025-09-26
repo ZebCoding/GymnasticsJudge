@@ -306,7 +306,7 @@
     const SALUTE_ARM_ANGLE_THRESHOLD = 45; // arms up angle
     
     // Salute detection - simplified to immediate trigger
-    const SALUTE_CONFIRM_FRAMES = 5; // ~0.08 seconds to confirm salute
+    const SALUTE_CONFIRM_FRAMES = 1; // Immediate salute detection
 
     // Get camera and start pose detection immediately with fallback options
     console.log('🎥 Requesting camera access...');
@@ -1235,7 +1235,7 @@
       
       // Calculate hip position relative to mushroom center
       const relativeHipX = hipCenterX - state.mushroomCenterX;
-      const oscillationThreshold = 0.15; // How far from center constitutes "left" or "right"
+      const oscillationThreshold = 0.08; // More sensitive - smaller movements count as left/right
       
       // Determine current oscillation position
       let currentPosition;
