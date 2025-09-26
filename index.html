@@ -1168,7 +1168,6 @@
     
     function detectCircles(landmarks) {
       if (routineState !== ROUTINE_STATES.ACTIVE) {
-        // Debug why circle detection is not running
         if (Math.random() < 0.01) {
           console.log(`🚫 Circle detection blocked - routine state: ${routineState}`);
         }
@@ -1181,119 +1180,114 @@
         return; // Only count circles during routine, not mounting
       }
       
-      // Visibility-based circle detection: legs going behind mushroom and coming back
-      const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
-      const leftKnee = landmarks[25], rightKnee = landmarks[26];
+      // Get required landmarks for mushroom-center and hip tracking
+      const leftWrist = landmarks[15], rightWrist = landmarks[16];
+      const leftHip = landmarks[23], rightHip = landmarks[24];
       
-      // More lenient landmark checking - don't require perfect visibility
-      if (!leftAnkle || !rightAnkle || !leftKnee || !rightKnee) {
+      if (!leftHip || !rightHip) {
         if (Math.random() < 0.02) {
-          console.log(`🚫 Circle detection - missing landmarks: LAnkle:${!!leftAnkle} RAnkle:${!!rightAnkle} LKnee:${!!leftKnee} RKnee:${!!rightKnee}`);
+          console.log(`🚫 Circle detection - missing hip landmarks`);
         }
         return;
       }
       
       const now = performance.now();
+      const hipCenterX = (leftHip.x + rightHip.x) / 2;
+      const hipCenterY = (leftHip.y + rightHip.y) / 2;
       
-      // Debug: Confirm circle detection is actually running
-      if (Math.random() < 0.05) {
-        console.log(`✅ Circle detection RUNNING - hasEverBeenAirborne: ${hasEverBeenAirborne}, routineState: ${routineState}`);
-      }
-      
-      // Check leg visibility with hysteresis to prevent flickering
-      // Use default visibility of 0.9 if undefined (MediaPipe sometimes doesn't provide visibility)
-      const leftAnkleVis = (leftAnkle.visibility !== undefined) ? leftAnkle.visibility : 0.9;
-      const rightAnkleVis = (rightAnkle.visibility !== undefined) ? rightAnkle.visibility : 0.9;
-      const leftKneeVis = (leftKnee.visibility !== undefined) ? leftKnee.visibility : 0.9;
-      const rightKneeVis = (rightKnee.visibility !== undefined) ? rightKnee.visibility : 0.9;
-      const avgLegVisibility = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
-      
-      // Force debug output every 30 frames to ensure we can see what's happening
-      if (Math.random() < 0.033) {
-        console.log(`👀 LEG VISIBILITY DEBUG - Avg: ${avgLegVisibility.toFixed(2)} (LA:${leftAnkleVis.toFixed(2)} RA:${rightAnkleVis.toFixed(2)} LK:${leftKneeVis.toFixed(2)} RK:${rightKneeVis.toFixed(2)})`);
-      }
-      
-      // Additional check: don't count circles if gymnast is bowing (body very low)
-      const hipY = (landmarks[23].y + landmarks[24].y) / 2;
-      const isBowingDown = hipY > 0.6; // Body center too low = bowing, not circles
-      
-      // Initialize circle state tracking
+      // Initialize mushroom-center detection and hip oscillation tracking
       if (window.circleDetectionState === undefined) {
         window.circleDetectionState = {
-          legsBehindMushroom: false,
-          lastStateChange: now,
-          circleStartTime: 0,
-          lastCircleEndTime: 0 // Track when last circle ended to prevent rapid counting
+          mushroomCenterX: null,
+          mushroomCenterY: null,
+          lastHipPosition: { x: hipCenterX, y: hipCenterY },
+          oscillationState: 'center', // 'left', 'center', 'right'
+          lastCircleTime: 0,
+          pendingCircleStart: null // Track when we start going to one side
         };
-        console.log(`🎯 Circle detection initialized - Counting every VISIBLE→BEHIND→VISIBLE transition as a circle`);
+        
+        // Try to detect mushroom center from initial hand positions
+        if (leftWrist && rightWrist) {
+          window.circleDetectionState.mushroomCenterX = (leftWrist.x + rightWrist.x) / 2;
+          window.circleDetectionState.mushroomCenterY = (leftWrist.y + rightWrist.y) / 2;
+          console.log(`🍄 Mushroom center detected at (${window.circleDetectionState.mushroomCenterX.toFixed(3)}, ${window.circleDetectionState.mushroomCenterY.toFixed(3)})`);
+        }
+        
+        console.log(`🎯 Circle detection initialized - Hip oscillation tracking around mushroom center`);
       }
       
       const state = window.circleDetectionState;
       
-      // Hysteresis thresholds to prevent rapid state changes
-      const HIDE_THRESHOLD = 0.80; // Legs must be visible to be considered "not behind mushroom" 
-      const SHOW_THRESHOLD = 0.60; // More sensitive - legs can be quite visible and still count as "behind mushroom"
+      // If we don't have mushroom center yet, try to establish it
+      if (state.mushroomCenterX === null && leftWrist && rightWrist) {
+        state.mushroomCenterX = (leftWrist.x + rightWrist.x) / 2;
+        state.mushroomCenterY = (leftWrist.y + rightWrist.y) / 2;
+        console.log(`🍄 Mushroom center established at (${state.mushroomCenterX.toFixed(3)}, ${state.mushroomCenterY.toFixed(3)})`);
+      }
       
-      // Determine current visibility state using hysteresis
-      let legsBehindMushroom;
-      if (state.legsBehindMushroom) {
-        // Currently behind mushroom - need high visibility to come back out
-        legsBehindMushroom = (avgLegVisibility < HIDE_THRESHOLD) && !isBowingDown;
+      // Need mushroom center to proceed
+      if (state.mushroomCenterX === null) {
+        if (Math.random() < 0.01) {
+          console.log(`🚫 Circle detection - no mushroom center established yet`);
+        }
+        return;
+      }
+      
+      // Calculate hip position relative to mushroom center
+      const relativeHipX = hipCenterX - state.mushroomCenterX;
+      const oscillationThreshold = 0.15; // How far from center constitutes "left" or "right"
+      
+      // Determine current oscillation position
+      let currentPosition;
+      if (relativeHipX < -oscillationThreshold) {
+        currentPosition = 'left';
+      } else if (relativeHipX > oscillationThreshold) {
+        currentPosition = 'right';
       } else {
-        // Currently visible - need low visibility to go behind mushroom
-        legsBehindMushroom = (avgLegVisibility < SHOW_THRESHOLD) && !isBowingDown;
+        currentPosition = 'center';
       }
       
-      // Debug visibility with state information
+      // Debug hip oscillation occasionally
       if (Math.random() < 0.05) {
-        const status = isBowingDown ? 'BOWING' : (legsBehindMushroom ? 'BEHIND MUSHROOM' : 'VISIBLE');
-        console.log(`👀 STATE CHECK - Visibility: ${avgLegVisibility.toFixed(2)}, Hip Y: ${hipY.toFixed(2)} - ${status} (Current state: ${state.legsBehindMushroom ? 'BEHIND' : 'VISIBLE'})`);
+        console.log(`🔄 Hip tracking - RelativeX: ${relativeHipX.toFixed(3)}, Position: ${currentPosition}, Last: ${state.oscillationState}`);
       }
       
-      // Detect state changes
-      if (legsBehindMushroom !== state.legsBehindMushroom) {
-        const timeSinceLastChange = (now - state.lastStateChange) / 1000;
+      // Detect complete oscillation cycles: center → left → center → right → center = 1 circle
+      if (currentPosition !== state.oscillationState) {
+        const timeSinceLastChange = (now - state.lastCircleTime) / 1000;
         
-        // Prevent very rapid state changes (less than 0.1 seconds)
-        if (timeSinceLastChange < 0.1) {
-          return; // Ignore this change, too rapid
+        // Prevent too rapid state changes
+        if (timeSinceLastChange < 0.2) {
+          return;
         }
         
-        state.lastStateChange = now;
+        console.log(`🔄 Hip oscillation: ${state.oscillationState} → ${currentPosition}`);
         
-        if (!state.legsBehindMushroom && legsBehindMushroom) {
-          // Legs just went behind mushroom - start of circle
-          console.log(`🍄 Legs went BEHIND mushroom - circle started (visibility: ${avgLegVisibility.toFixed(2)})`);
-          state.circleStartTime = now;
-        } else if (state.legsBehindMushroom && !legsBehindMushroom) {
-          // Legs just came back from behind mushroom - circle completed!
-          const circleTime = (now - state.circleStartTime) / 1000;
-          const timeSinceLastCircle = (now - state.lastCircleEndTime) / 1000;
+        // Track circle completion: full left-to-right or right-to-left swing
+        if ((state.oscillationState === 'left' && currentPosition === 'right') || 
+            (state.oscillationState === 'right' && currentPosition === 'left')) {
           
-          // Count EVERY hide→show transition as a circle (no minimum time)
-          // Only prevent very rapid duplicates (less than 0.1s apart)
-          if (timeSinceLastCircle > 0.1) {
-            circleCount++;
-            console.log(`🎯 Circle ${circleCount} COMPLETED! Legs returned from behind mushroom (${circleTime.toFixed(2)}s duration, visibility: ${avgLegVisibility.toFixed(2)})`);
-            
-            // Apply deduction for completed circle
-            applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
-            
-            // Reset for next circle
-            currentCircleWorstBending = 0;
-            currentCircleWorstSpreading = 0;
-            currentCircleStartTime = now;
-            state.lastCircleEndTime = now;
-            
-            // Update display
-            circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
-          } else {
-            console.log(`⚠️ Circle too rapid (${timeSinceLastCircle.toFixed(3)}s since last) - likely detection noise`);
-          }
+          // Complete swing detected - count as circle
+          circleCount++;
+          console.log(`🎯 Circle ${circleCount} COMPLETED! Hip swung from ${state.oscillationState} to ${currentPosition}`);
+          
+          // Apply deduction for completed circle
+          applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
+          
+          // Reset for next circle
+          currentCircleWorstBending = 0;
+          currentCircleWorstSpreading = 0;
+          state.lastCircleTime = now;
+          
+          // Update display
+          circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
         }
         
-        state.legsBehindMushroom = legsBehindMushroom;
+        state.oscillationState = currentPosition;
       }
+      
+      // Update last position for next frame
+      state.lastHipPosition = { x: hipCenterX, y: hipCenterY };
     }
     
     function applyCircleDeduction(circleNumber, bendingSeverity, spreadingSeverity) {
