@@ -960,54 +960,35 @@
           console.log(`  Check bending: ${deductionRules.checkBending}, Check spreading: ${deductionRules.checkSpreading}`);
         }
         
-        // Realistic circle-based deduction system
+        // Simplified deduction system - shouldApplyDeductions already handles visibility
         if (deductionRules.checkBending || deductionRules.checkSpreading) {
-          // Evaluate current form quality
-          // Additional checks to prevent false positives:
-          // 1. If legs are very close together, likely not bent
-          // 2. If legs are not clearly visible, likely behind mushroom
+          // Only apply basic validation for angle sanity
           const ankleDistance = Math.abs(landmarks[27].x - landmarks[28].x);
           const legsVeryCloseTogether = ankleDistance < 0.08;
           
-          const leftAnkleVis = (landmarks[27].visibility || 1);
-          const rightAnkleVis = (landmarks[28].visibility || 1);
-          const leftKneeVis = (landmarks[25].visibility || 1);
-          const rightKneeVis = (landmarks[26].visibility || 1);
-          const avgLegVisibility = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
-          const legsBehindMushroom = avgLegVisibility < 0.8; // Higher threshold - assume perfect form when not clearly visible
-          
           let bendingSeverity = 0;
-          if (deductionRules.checkBending && !legsVeryCloseTogether && !legsBehindMushroom) {
-            // Additional validation: check for extreme angle readings that might be pose detection errors
-            const leftValid = leftKneeAngle > 20 && leftKneeAngle < 200; // More permissive angle range
+          if (deductionRules.checkBending && !legsVeryCloseTogether) {
+            // Basic validation: check for extreme angle readings
+            const leftValid = leftKneeAngle > 20 && leftKneeAngle < 200;
             const rightValid = rightKneeAngle > 20 && rightKneeAngle < 200;
-            const bothKneesVisible = (landmarks[25].visibility || 1) > 0.5 && (landmarks[26].visibility || 1) > 0.5; // Lower visibility threshold
             
-            if (leftValid && rightValid && bothKneesVisible) {
+            if (leftValid && rightValid) {
               bendingSeverity = evaluateBendingSeverity(leftKneeAngle, rightKneeAngle, kneeThreshold);
+              if (bendingSeverity > 0 && Math.random() < 0.02) {
+                console.log(`🚨 BENDING DETECTED: ${bendingSeverity.toFixed(1)} - L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
+              }
             } else {
               if (Math.random() < 0.01) {
-                console.log(`⚠️ Skipping bending check - suspicious angle readings L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}° or low knee visibility`);
+                console.log(`⚠️ Skipping bending check - suspicious angles L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
               }
-            }
-          } else {
-            if (legsVeryCloseTogether && Math.random() < 0.01) {
-              console.log(`✅ Skipping bending check - legs very close together (${ankleDistance.toFixed(3)})`);
-            }
-            if (legsBehindMushroom && Math.random() < 0.01) {
-              console.log(`🍄 Skipping bending check - legs behind mushroom (visibility: ${avgLegVisibility.toFixed(2)})`);
             }
           }
           
           let spreadingSeverity = 0;
-          if (deductionRules.checkSpreading && !legsVeryCloseTogether && !legsBehindMushroom) {
+          if (deductionRules.checkSpreading && !legsVeryCloseTogether) {
             spreadingSeverity = evaluateSpreadingSeverity(landmarks, hipDistance, ankleDist, kneeDist);
-          } else {
-            if (legsVeryCloseTogether && Math.random() < 0.01) {
-              console.log(`✅ Skipping spreading check - legs very close together (${ankleDistance.toFixed(3)})`);
-            }
-            if (legsBehindMushroom && Math.random() < 0.01) {
-              console.log(`🍄 Skipping spreading check - legs behind mushroom (visibility: ${avgLegVisibility.toFixed(2)})`);
+            if (spreadingSeverity > 0 && Math.random() < 0.02) {
+              console.log(`🚨 SPREADING DETECTED: ${spreadingSeverity.toFixed(1)} - Ankle dist: ${ankleDist.toFixed(3)}`);
             }
           }
           
@@ -1015,7 +996,7 @@
           if (bendingSeverity > currentCircleWorstBending) {
             currentCircleWorstBending = bendingSeverity;
             if (bendingSeverity > 0) {
-              console.log(`🚨 BENDING SEVERITY RECORDED: ${bendingSeverity.toFixed(1)} - L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}° (threshold:${kneeThreshold}°)`);
+              console.log(`🚨 BENDING SEVERITY RECORDED: ${bendingSeverity.toFixed(1)} for current circle`);
               recordMistakeForReplay("bending", bendingSeverity);
             }
           }
@@ -1023,15 +1004,16 @@
           if (spreadingSeverity > currentCircleWorstSpreading) {
             currentCircleWorstSpreading = spreadingSeverity;
             if (spreadingSeverity > 0) {
+              console.log(`🚨 SPREADING SEVERITY RECORDED: ${spreadingSeverity.toFixed(1)} for current circle`);
               recordMistakeForReplay("spreading", spreadingSeverity);
             }
           }
           
-          // Debug current form quality occasionally - MORE FREQUENT FOR DEBUGGING
-          if (Math.random() < 0.05) {
+          // Debug current form quality - MORE FREQUENT FOR DEBUGGING
+          if (Math.random() < 0.03) {
             console.log(`🔍 Form check - Bending: ${bendingSeverity.toFixed(1)}, Spreading: ${spreadingSeverity.toFixed(1)}, Circle worst: B${currentCircleWorstBending.toFixed(1)}/S${currentCircleWorstSpreading.toFixed(1)}`);
-            console.log(`🔍 Visibility debug - avgLegVisibility: ${avgLegVisibility.toFixed(2)}, legsBehindMushroom: ${legsBehindMushroom}, legsVeryClose: ${legsVeryCloseTogether}, ankleDistance: ${ankleDistance.toFixed(3)}`);
-            console.log(`🔍 Angles - L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}° (threshold:${kneeThreshold}°)`);
+            console.log(`🔍 Deduction rules: checkBending=${deductionRules.checkBending}, checkSpreading=${deductionRules.checkSpreading}, reason='${deductionRules.reason}'`);
+            console.log(`🔍 Basic checks - legsVeryClose: ${legsVeryCloseTogether}, ankleDistance: ${ankleDistance.toFixed(3)}, L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
           }
         } else {
           // Log when deductions are not being applied
@@ -1301,23 +1283,22 @@
         
         const steps = state.stepTracking.sequence;
         
-        // Add current position to sequence
+        // Add current position to sequence (avoid duplicates)
         if (steps.length === 0 || steps[steps.length - 1] !== currentPosition) {
           steps.push(currentPosition);
           console.log(`🔄 Circle step: ${currentPosition} (sequence: [${steps.slice(-4).join(' → ')}])`);
           
-          // Check if we completed a circle - multiple valid patterns:
-          // 1. side → center → side → center (standard)
-          // 2. side → side (direct transition - also counts)
-          
+          // Simplified circle detection: side → center → opposite_side → center = 1 circle
+          // This prevents double counting and ensures consistent detection
           if (steps.length >= 4) {
             const lastFour = steps.slice(-4);
             const [step1, step2, step3, step4] = lastFour;
             
-            // Pattern 1: side → center → side → center (any sides work)
+            // Must be: side → center → different_side → center
             if (step2 === 'center' && step4 === 'center' && 
                 (step1 === 'left' || step1 === 'right') && 
-                (step3 === 'left' || step3 === 'right')) {
+                (step3 === 'left' || step3 === 'right') &&
+                step1 !== step3) { // Must go to different sides
               
               circleCount++;
               console.log(`🎯 Circle ${circleCount} COMPLETED! Pattern: ${lastFour.join(' → ')}`);
@@ -1331,36 +1312,10 @@
               state.lastCircleTime = now;
               
               // Update display
-              circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+              circleCountDisplay.textContent = `Circles: ${circleCount}`;
               
-              // Keep only the last position to start next circle
-              steps.length = 1; // Keep current position as start of next sequence
-            }
-          } else if (steps.length >= 2) {
-            // Pattern 2: Check for direct side-to-side transitions (also counts as circle)
-            const lastTwo = steps.slice(-2);
-            const [prev, curr] = lastTwo;
-            
-            if ((prev === 'left' || prev === 'right') && 
-                (curr === 'left' || curr === 'right') && 
-                prev !== curr) {
-              
-              circleCount++;
-              console.log(`🎯 Circle ${circleCount} COMPLETED! Direct transition: ${lastTwo.join(' → ')}`);
-              
-              // Apply deduction for completed circle
-              applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
-              
-              // Reset for next circle
-              currentCircleWorstBending = 0;
-              currentCircleWorstSpreading = 0;
-              state.lastCircleTime = now;
-              
-              // Update display
-              circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
-              
-              // Keep only the last position to start next circle
-              steps.length = 1;
+              // Keep only the last two positions to continue sequence
+              steps.splice(0, steps.length - 2);
             }
           }
           
