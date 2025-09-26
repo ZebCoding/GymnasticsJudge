@@ -1224,6 +1224,7 @@
           oscillationState: 'center', // 'left', 'center', 'right'
           lastCircleTime: 0,
           lastCircleCountTime: 0,
+          lastDirectCircleTime: 0,
           rotationDirection: null, // 'left-right' or 'right-left' - set on first circle
           pendingCircleStart: null // Track when we start going to one side
         };
@@ -1303,44 +1304,61 @@
           steps.push(currentPosition);
           console.log(`🔄 Circle step: ${currentPosition} (sequence: [${steps.slice(-4).join(' → ')}])`);
           
-          // Circle detection: Check for complete oscillation patterns
-          // Pattern 1: Full cycle through center: left → center → right → center
-          // Pattern 2: Direct side-to-side: left → right (for quick/small circles)
+          // Circle detection: Check for complete oscillation patterns with multiple fallback methods
           let isFullCircle = false;
           let circlePattern = [];
           let circleType = '';
+          let step1, step3; // The start and end positions for rotation detection
           
-          // Check for 4-step pattern first (preferred)
-          if (steps.length >= 4) {
+          // Method 1: Check for 4-step pattern (most reliable)
+          if (!isFullCircle && steps.length >= 4) {
             const lastFour = steps.slice(-4);
-            const [step1, step2, step3, step4] = lastFour;
+            const [s1, s2, s3, s4] = lastFour;
             
-            if (step2 === 'center' && step4 === 'center' && 
-                ((step1 === 'left' && step3 === 'right') || (step1 === 'right' && step3 === 'left'))) {
+            if (s2 === 'center' && s4 === 'center' && 
+                ((s1 === 'left' && s3 === 'right') || (s1 === 'right' && s3 === 'left'))) {
               isFullCircle = true;
               circlePattern = lastFour;
               circleType = 'full cycle';
+              step1 = s1;
+              step3 = s3;
             }
           }
           
-          // Check for 3-step pattern as fallback
+          // Method 2: Check for 3-step pattern (through center or direct)
           if (!isFullCircle && steps.length >= 3) {
             const lastThree = steps.slice(-3);
-            const [step1, step2, step3] = lastThree;
+            const [s1, s2, s3] = lastThree;
             
-            // Either: side → center → opposite_side OR side → opposite_side (direct)
-            if (((step2 === 'center' || step1 !== step3) && 
-                 ((step1 === 'left' && step3 === 'right') || (step1 === 'right' && step3 === 'left')))) {
+            if (((s1 === 'left' && s3 === 'right') || (s1 === 'right' && s3 === 'left'))) {
               isFullCircle = true;
               circlePattern = lastThree;
-              circleType = step2 === 'center' ? 'through center' : 'direct side-to-side';
+              circleType = s2 === 'center' ? 'through center' : 'direct side-to-side';
+              step1 = s1;
+              step3 = s3;
+            }
+          }
+          
+          // Method 3: Direct side-to-side (for quick movements that skip center)
+          if (!isFullCircle && steps.length >= 2) {
+            const lastTwo = steps.slice(-2);
+            const [s1, s2] = lastTwo;
+            
+            if (((s1 === 'left' && s2 === 'right') || (s1 === 'right' && s2 === 'left'))) {
+              // Only count this if we haven't seen this pattern recently (prevent spam)
+              const timeSinceLastDirect = (now - (state.lastDirectCircleTime || 0)) / 1000;
+              if (timeSinceLastDirect > 1.0) { // At least 1 second between direct detections
+                isFullCircle = true;
+                circlePattern = lastTwo;
+                circleType = 'direct transition';
+                step1 = s1;
+                step3 = s2;
+                state.lastDirectCircleTime = now;
+              }
             }
           }
             
             if (isFullCircle) {
-              // Determine rotation direction from the pattern
-              const step1 = circlePattern[0];
-              const step3 = circlePattern[circlePattern.length >= 4 ? 2 : circlePattern.length - 1];
               const currentRotation = `${step1}-${step3}`;
               
               console.log(`🔍 Potential circle detected: ${circlePattern.join(' → ')} (${step1} to ${step3}) - ${circleType}`);
@@ -1369,9 +1387,16 @@
                 // Update display
                 circleCountDisplay.textContent = `Circles: ${circleCount}`;
                 
-                // Keep the last position as starting point for next circle
-                steps.length = 0; // Clear sequence
-                steps.push(step3); // Start new sequence from the end position
+                // For direct transitions, keep more of the sequence to maintain tracking
+                if (circleType === 'direct transition') {
+                  // Keep last position only
+                  steps.length = 0;
+                  steps.push(step3);
+                } else {
+                  // For full patterns, start fresh but keep ending position
+                  steps.length = 0;
+                  steps.push(step3);
+                }
               } else {
                 console.log(`❌ Circle skipped - wrong rotation direction (${currentRotation} != ${state.rotationDirection})`);
                 // Don't clear the sequence for wrong direction circles, let it continue tracking
