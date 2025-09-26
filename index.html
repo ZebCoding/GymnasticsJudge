@@ -640,19 +640,24 @@
       const leftKnee = landmarks[25], rightKnee = landmarks[26];
       const leftHip = landmarks[23], rightHip = landmarks[24];
       
-      const legLandmarks = [leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle];
-      const visibleLegCount = legLandmarks.filter(lm => lm && (lm.visibility || 1) > 0.6).length;
-      const legsVisible = visibleLegCount >= 4; // Need at least 4 of 6 leg landmarks visible
+      // Much more conservative visibility check - require high visibility for all key landmarks
+      const leftAnkleVis = (leftAnkle && leftAnkle.visibility) || 0;
+      const rightAnkleVis = (rightAnkle && rightAnkle.visibility) || 0;
+      const leftKneeVis = (leftKnee && leftKnee.visibility) || 0;
+      const rightKneeVis = (rightKnee && rightKnee.visibility) || 0;
       
-      if (!legsVisible) {
+      const avgLegVisibility = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
+      const allLegsHighlyVisible = avgLegVisibility > 0.85; // Much stricter visibility requirement
+      
+      if (!allLegsHighlyVisible) {
         // When legs aren't clearly visible (behind pommel horse), assume proper form
-        if (Math.random() < 0.01) {
-          console.log('🙈 Legs not clearly visible - assuming proper form (no deductions)');
+        if (Math.random() < 0.02) {
+          console.log(`🙈 Legs not clearly visible (visibility: ${avgLegVisibility.toFixed(2)}) - assuming proper form (no deductions)`);
         }
         return {
           checkBending: false,
           checkSpreading: false,
-          reason: 'legs not visible - assumed proper'
+          reason: `legs not clearly visible (${avgLegVisibility.toFixed(2)}) - assumed proper`
         };
       }
       
@@ -1014,6 +1019,14 @@
             console.log(`🔍 Form check - Bending: ${bendingSeverity.toFixed(1)}, Spreading: ${spreadingSeverity.toFixed(1)}, Circle worst: B${currentCircleWorstBending.toFixed(1)}/S${currentCircleWorstSpreading.toFixed(1)}`);
             console.log(`🔍 Deduction rules: checkBending=${deductionRules.checkBending}, checkSpreading=${deductionRules.checkSpreading}, reason='${deductionRules.reason}'`);
             console.log(`🔍 Basic checks - legsVeryClose: ${legsVeryCloseTogether}, ankleDistance: ${ankleDistance.toFixed(3)}, L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
+            
+            // Debug leg visibility
+            const leftAnkleVis = (landmarks[27] && landmarks[27].visibility) || 0;
+            const rightAnkleVis = (landmarks[28] && landmarks[28].visibility) || 0;
+            const leftKneeVis = (landmarks[25] && landmarks[25].visibility) || 0;
+            const rightKneeVis = (landmarks[26] && landmarks[26].visibility) || 0;
+            const avgVis = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
+            console.log(`🔍 Visibility - LAnkle:${leftAnkleVis.toFixed(2)} RAnkle:${rightAnkleVis.toFixed(2)} LKnee:${leftKneeVis.toFixed(2)} RKnee:${rightKneeVis.toFixed(2)} Avg:${avgVis.toFixed(2)}`);
           }
         } else {
           // Log when deductions are not being applied
