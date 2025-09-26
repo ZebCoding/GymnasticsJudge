@@ -1263,41 +1263,57 @@
         
         console.log(`🔄 Foot oscillation: ${state.oscillationState} → ${currentPosition}`);
         
-        // Track complete oscillation cycles: track when we complete a full cycle
-        // A full cycle is: center → side → center → opposite side → center
+        // Simple circle counting: side → center → side → center = 1 circle
+        // Works for any direction (left-handed or right-handed gymnasts)
         
-        // Initialize cycle tracking if not exists
-        if (!state.cycleTracking) {
-          state.cycleTracking = {
-            lastSide: null, // Track the last side we visited ('left' or 'right')
-            waitingForOppositeSide: false // Are we waiting to go to the opposite side?
+        // Initialize step tracking if not exists
+        if (!state.stepTracking) {
+          state.stepTracking = {
+            sequence: [], // Track the sequence of positions
+            expectedNext: 'side' // What we're expecting next: 'side' or 'center'
           };
         }
         
-        // Only count when we go to a side (not center)
-        if (currentPosition === 'left' || currentPosition === 'right') {
-          if (state.cycleTracking.lastSide === null) {
-            // First side visited - just record it
-            state.cycleTracking.lastSide = currentPosition;
-            console.log(`🔄 Starting circle tracking from ${currentPosition} side`);
-          } else if (state.cycleTracking.lastSide !== currentPosition) {
-            // We've swung to the opposite side - complete circle!
-            circleCount++;
-            console.log(`🎯 Circle ${circleCount} COMPLETED! Full oscillation: ${state.cycleTracking.lastSide} → ${currentPosition}`);
+        const steps = state.stepTracking.sequence;
+        
+        // Add current position to sequence
+        if (steps.length === 0 || steps[steps.length - 1] !== currentPosition) {
+          steps.push(currentPosition);
+          console.log(`🔄 Circle step: ${currentPosition} (sequence: [${steps.slice(-4).join(' → ')}])`);
+          
+          // Check if we completed a circle: side → center → side → center
+          if (steps.length >= 4) {
+            const lastFour = steps.slice(-4);
+            const [step1, step2, step3, step4] = lastFour;
             
-            // Apply deduction for completed circle
-            applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
-            
-            // Reset for next circle
-            currentCircleWorstBending = 0;
-            currentCircleWorstSpreading = 0;
-            state.lastCircleTime = now;
-            state.cycleTracking.lastSide = currentPosition; // Update for next cycle
-            
-            // Update display
-            circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+            // Pattern: side → center → side → center (any sides work)
+            if (step2 === 'center' && step4 === 'center' && 
+                (step1 === 'left' || step1 === 'right') && 
+                (step3 === 'left' || step3 === 'right')) {
+              
+              circleCount++;
+              console.log(`🎯 Circle ${circleCount} COMPLETED! Pattern: ${lastFour.join(' → ')}`);
+              
+              // Apply deduction for completed circle
+              applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
+              
+              // Reset for next circle
+              currentCircleWorstBending = 0;
+              currentCircleWorstSpreading = 0;
+              state.lastCircleTime = now;
+              
+              // Update display
+              circleCountDisplay.textContent = `Circles: ${circleCount.toFixed(2)}`;
+              
+              // Keep only the last position to start next circle
+              steps.length = 1; // Keep current position as start of next sequence
+            }
           }
-          // If same side as before, just continue (no action needed)
+          
+          // Limit sequence length to prevent memory issues
+          if (steps.length > 10) {
+            steps.splice(0, steps.length - 5); // Keep last 5 positions
+          }
         }
         
         state.oscillationState = currentPosition;
