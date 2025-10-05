@@ -1386,8 +1386,8 @@
               }
             }
           }
-            
-            if (isFullCircle) {
+          
+          if (isFullCircle) {
               const currentRotation = `${step1}-${step3}`;
               
               console.log(`🔍 Potential circle detected: ${circlePattern.join(' → ')} (${step1} to ${step3}) - ${circleType}`);
@@ -1430,7 +1430,6 @@
                 console.log(`❌ Circle skipped - wrong rotation direction (${currentRotation} != ${state.rotationDirection})`);
                 // Don't clear the sequence for wrong direction circles, let it continue tracking
               }
-            }
           }
           
           // Limit sequence length to prevent memory issues
