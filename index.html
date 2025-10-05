@@ -316,8 +316,17 @@
         // Try high quality first
         { 
           video: { 
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            facingMode: 'user',
+            frameRate: { ideal: 30, max: 60 }
+          } 
+        },
+        // Fallback to medium quality
+        { 
+          video: { 
+            width: { ideal: 640 },
+            height: { ideal: 480 },
             facingMode: 'user'
           } 
         },
@@ -336,36 +345,34 @@
           mediaStream = stream; 
           video.srcObject = stream;
           
-          // Force video to play
+          // Force video to play - set muted to avoid autoplay restrictions
+          video.muted = true;
           try {
             await video.play();
             console.log('📹 Video playing successfully');
           } catch (playErr) {
             console.error('❌ Video play error:', playErr);
+            // Try to recover by setting additional attributes
+            video.setAttribute('playsinline', true);
+            video.setAttribute('muted', true);
+            try {
+              await video.play();
+              console.log('📹 Video playing successfully after recovery attempt');
+            } catch (secondPlayErr) {
+              console.error('❌ Second video play attempt failed:', secondPlayErr);
+            }
           }
           
-          // Multiple ways to start pose detection
+          // Wait for MediaPipe to be ready before starting pose detection
           video.addEventListener('loadeddata', () => {
             console.log('📊 Video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
-            setTimeout(() => {
-              console.log('🤖 Starting pose detection from loadeddata...');
-              detectPose();
-            }, 1000);
+            waitForPoseInitAndStart();
           });
           
           // Backup timer to start pose detection
           setTimeout(() => {
             console.log('⏰ Backup timer: Force starting pose detection...');
-            if (video.videoWidth > 0 && video.videoHeight > 0) {
-              console.log('📊 Video dimensions from backup:', video.videoWidth, 'x', video.videoHeight);
-              detectPose();
-            } else {
-              console.log('⚠️ Video not ready yet, trying again in 2s...');
-              setTimeout(() => {
-                console.log('⏰ Final attempt to start pose detection...');
-                detectPose();
-              }, 2000);
-            }
+            waitForPoseInitAndStart();
           }, 3000);
           
           // Additional event listeners for debugging
@@ -741,25 +748,44 @@
 
     // Setup MediaPipe Pose with error handling
     let pose;
-    try {
-      console.log('Initializing MediaPipe Pose...');
-      pose = new Pose({locateFile: (file) => {
-        const url = `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`;
-        console.log('Loading MediaPipe file:', url);
-        return url;
-      }});
-      pose.setOptions({
-        modelComplexity: 1, 
-        smoothLandmarks: true, 
-        enableSegmentation: false,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
-      pose.onResults(onResults);
-      console.log('MediaPipe Pose initialized successfully');
-    } catch (error) {
-      console.error('Failed to initialize MediaPipe Pose:', error);
-      alert('Failed to load pose detection. Please refresh the page.');
+    let poseInitialized = false;
+    
+    function initializeMediaPipe() {
+      try {
+        console.log('Initializing MediaPipe Pose...');
+        pose = new Pose({locateFile: (file) => {
+          const url = `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`;
+          console.log('Loading MediaPipe file:', url);
+          return url;
+        }});
+        pose.setOptions({
+          modelComplexity: 1, 
+          smoothLandmarks: true, 
+          enableSegmentation: false,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+        pose.onResults(onResults);
+        poseInitialized = true;
+        console.log('MediaPipe Pose initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize MediaPipe Pose:', error);
+        poseInitialized = false;
+        alert('Failed to load pose detection. Please refresh the page.');
+      }
+    }
+    
+    // Initialize MediaPipe after page loads
+    initializeMediaPipe();
+
+    function waitForPoseInitAndStart() {
+      if (poseInitialized && video.videoWidth > 0 && video.videoHeight > 0) {
+        console.log('🚀 Both MediaPipe and video ready - starting pose detection!');
+        detectPose();
+      } else {
+        console.log('⏳ Waiting for MediaPipe or video to be ready...');
+        setTimeout(waitForPoseInitAndStart, 500);
+      }
     }
 
     async function detectPose() {
@@ -786,7 +812,8 @@
       lastDetectionTime = now;
       
       try {
-        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+        // Check if pose is initialized and video is ready
+        if (poseInitialized && pose && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
           // Additional check: ensure video is actually playing
           if (!video.paused && !video.ended) {
             await pose.send({image: video});
@@ -794,6 +821,8 @@
           } else {
             console.log('Video not playing, skipping pose detection');
           }
+        } else if (!poseInitialized) {
+          console.log('Pose not initialized yet, skipping detection');
         }
       } catch (error) {
         console.error('Pose detection error:', error);
