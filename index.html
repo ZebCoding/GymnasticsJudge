@@ -567,39 +567,57 @@
       // Calculate how close legs are together (ankle distance)
       const ankleDistance = Math.abs(leftAnkle.x - rightAnkle.x);
       
+      // IMPROVED AIRBORNE DETECTION:
+      // Standard leg length when standing ~0.4, when airborne ~0.05-0.15
+      // BUT when legs are bent, ankles come up toward hips, reducing leg length
+      // So we need to also check hip height as an indicator
+      
+      const avgHipY = (leftHip.y + rightHip.y) / 2;
+      const highHipPosition = avgHipY < 0.6; // Hips high in frame = likely airborne
+      const shortLegLength = avgLegLength < 0.15; // Legs pulled up = likely airborne or bent
+      
+      // Airborne if: (short leg length) OR (high hip position AND reasonably short legs)
+      const actuallyAirborne = shortLegLength || (highHipPosition && avgLegLength < 0.25);
+      
       // MOUNTING vs ROUTINE DETECTION:
       // Mounting = legs apart is OK, no deductions yet
       // Routine = legs should be together, deductions apply
-      
-      const actuallyAirborne = avgLegLength < 0.10; // Standard airborne threshold
       
       // Key insight: During mounting, legs are often apart (0.15+ distance)
       // During routine, legs should be close together (< 0.08 distance)
       const legsApart = ankleDistance > 0.08; // Legs spread apart
       const legsCloseish = ankleDistance < 0.08; // Legs close together
       
+      // SMARTER MOUNTING DETECTION:
+      // Once we've seen proper airborne routine form, don't go back to mounting
+      // unless clearly on ground with very long leg length (actual dismount)
+      const clearlyOnGround = avgLegLength > 0.3 && avgHipY > 0.7; // Low hips, long legs = on ground
+      
       let isGrounded, mounting;
       
-      if (!actuallyAirborne) {
-        // On ground = always mounting phase (legs apart allowed)
+      if (clearlyOnGround) {
+        // Clearly on ground = mounting or dismounted
         isGrounded = true;
-        mounting = true;
+        mounting = !hasEverBeenAirborne; // If we've been airborne before, this is dismount, not mounting
         if (Math.random() < 0.05) {
-          console.log(`🦶 MOUNTING/GROUNDED: Ankle dist:${ankleDistance.toFixed(3)}, leg length:${avgLegLength.toFixed(3)} -> MOUNTING PHASE`);
+          const phase = mounting ? 'MOUNTING PHASE' : 'DISMOUNTED';
+          console.log(`🦶 ON GROUND: Ankle dist:${ankleDistance.toFixed(3)}, leg:${avgLegLength.toFixed(3)}, hip:${avgHipY.toFixed(3)} -> ${phase}`);
         }
-      } else if (actuallyAirborne && legsCloseish) {
-        // Airborne + legs close together = routine started
+      } else if (actuallyAirborne) {
+        // Airborne = routine phase (regardless of leg spacing for deduction tracking)
         isGrounded = false;
         mounting = false;
         if (Math.random() < 0.05) {
-          console.log(`🎢 ROUTINE: Airborne (${avgLegLength.toFixed(3)}) + legs close (${ankleDistance.toFixed(3)}) -> ROUTINE PHASE`);
+          const legState = legsCloseish ? 'legs close' : 'legs apart';
+          console.log(`🎢 AIRBORNE ROUTINE: leg:${avgLegLength.toFixed(3)}, hip:${avgHipY.toFixed(3)}, ${legState} (${ankleDistance.toFixed(3)}) -> ROUTINE PHASE`);
         }
       } else {
-        // Airborne but legs apart = still mounting/transitioning
-        isGrounded = false;
-        mounting = true;
+        // Ambiguous state - use hasEverBeenAirborne to determine
+        isGrounded = true;
+        mounting = !hasEverBeenAirborne;
         if (Math.random() < 0.05) {
-          console.log(`⏳ TRANSITIONING: Airborne (${avgLegLength.toFixed(3)}) but legs apart (${ankleDistance.toFixed(3)}) -> STILL MOUNTING`);
+          const phase = mounting ? 'MOUNTING (ambiguous)' : 'GROUNDED (post-routine)';
+          console.log(`⏳ AMBIGUOUS: leg:${avgLegLength.toFixed(3)}, hip:${avgHipY.toFixed(3)}, ankle dist:${ankleDistance.toFixed(3)} -> ${phase}`);
         }
       }
       
@@ -623,11 +641,14 @@
         lastGroundCheckTime = now;
         
         // Track if gymnast has ever been airborne (both feet off ground)
-        // Only trigger when both feet are visible and close together (not during mounting)
+        // Trigger when airborne and not in mounting phase
         if (!currentlyGrounded && !hasEverBeenAirborne && !groundStatus.mounting) {
           hasEverBeenAirborne = true;
-          const legLength = ((landmarks[27].y + landmarks[28].y) / 2) - ((landmarks[23].y + landmarks[24].y) / 2);
-          console.log(`🚁 GYMNAST NOW AIRBORNE! Both feet visible and close together - deduction rules now apply`);
+          const leftLegLength = landmarks[27].y - landmarks[23].y;
+          const rightLegLength = landmarks[28].y - landmarks[24].y;
+          const avgLegLength = (leftLegLength + rightLegLength) / 2;
+          const avgHipY = (landmarks[23].y + landmarks[24].y) / 2;
+          console.log(`🚁 GYMNAST NOW AIRBORNE! Leg length:${avgLegLength.toFixed(3)}, Hip Y:${avgHipY.toFixed(3)} - deduction rules and circle counting now active`);
         }
         
         // Debug ground contact and mounting detection
