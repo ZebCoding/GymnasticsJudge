@@ -1222,12 +1222,7 @@
                 
                 // Update display
                 circleCountDisplay.textContent = `Circles: ${circleCount}`;
-                
-                // Record circle completion time for tracking
-                const now = performance.now();
-                const videoTime = (now - routineStartTime) / 1000;
-                console.log(`🎲 Circle ${circleCount} completed at ${videoTime.toFixed(1)}s`);
-                
+
                 // For direct transitions, keep more of the sequence to maintain tracking
                 if (circleType === 'direct transition') {
                   // Keep last position only
@@ -1345,7 +1340,7 @@
       console.log(`👣 STEP DEDUCTION: -${stepSeverity} (${reason}) - Score: ${score.toFixed(1)}`);
       
       // Record timestamp for replay pausing - subtract processing delay
-      const processingDelay = 0.3;
+      const processingDelay = 0.1;
       const adjustedTime = Math.max(0, videoTime - processingDelay);
       
       deductionTimestamps.push({
