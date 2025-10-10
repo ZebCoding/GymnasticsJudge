@@ -782,7 +782,7 @@
       // Knee angles
       const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
       const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-      const kneeThreshold = 100; // Extremely less sensitive - only severe bending (90° bend)
+      const kneeThreshold = 120; // More sensitive - catch moderate bending
 
       // Body width measurements
       const hipDistance = distance(leftHip, rightHip);
@@ -828,25 +828,33 @@
           let hasBending = false;
           let hasSpreading = false;
           
-          // Check for bending (if legs not very close together)
-          if (!legsVeryCloseTogether) {
-            const leftValid = leftKneeAngle > 20 && leftKneeAngle < 200;
-            const rightValid = rightKneeAngle > 20 && rightKneeAngle < 200;
+          // Check for bending - ALWAYS check, even if legs are close together
+          const leftValid = leftKneeAngle > 20 && leftKneeAngle < 200;
+          const rightValid = rightKneeAngle > 20 && rightKneeAngle < 200;
+          
+          if (leftValid && rightValid) {
+            const leftBend = Math.max(0, kneeThreshold - leftKneeAngle);
+            const rightBend = Math.max(0, kneeThreshold - rightKneeAngle);
+            const worstBend = Math.max(leftBend, rightBend);
+            hasBending = worstBend > 3; // Catch smaller bending (more sensitive)
             
-            if (leftValid && rightValid) {
-              const leftBend = Math.max(0, kneeThreshold - leftKneeAngle);
-              const rightBend = Math.max(0, kneeThreshold - rightKneeAngle);
-              const worstBend = Math.max(leftBend, rightBend);
-              hasBending = worstBend > 5; // Significant bending detected
+            if (Math.random() < 0.05 && hasBending) {
+              console.log(`🦵 BENDING DETECTED: L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}° (threshold:${kneeThreshold}°, worst bend:${worstBend.toFixed(1)}°)`);
             }
-            
-            // Check for spreading
+          }
+          
+          // Check for spreading - only if legs are not very close together
+          if (!legsVeryCloseTogether) {
             const ankleRatio = ankleDist / hipDistance;
             const kneeRatio = kneeDist / hipDistance;
             const ankleSpread = Math.max(0, ankleRatio - 1.0);
             const kneeSpread = Math.max(0, kneeRatio - 1.0);
             const worstSpread = Math.max(ankleSpread, kneeSpread);
             hasSpreading = worstSpread > 0.2; // Significant spreading detected
+            
+            if (Math.random() < 0.05 && hasSpreading) {
+              console.log(`🔀 SPREADING DETECTED: Ankle ratio:${ankleRatio.toFixed(2)} Knee ratio:${kneeRatio.toFixed(2)} (worst spread:${worstSpread.toFixed(2)})`);
+            }
           }
           
           // Apply immediate deductions with grouping
@@ -1197,6 +1205,11 @@
                 
                 // Update display
                 circleCountDisplay.textContent = `Circles: ${circleCount}`;
+                
+                // Record circle completion time for tracking
+                const now = performance.now();
+                const videoTime = (now - routineStartTime) / 1000;
+                console.log(`🎲 Circle ${circleCount} completed at ${videoTime.toFixed(1)}s`);
                 
                 // For direct transitions, keep more of the sequence to maintain tracking
                 if (circleType === 'direct transition') {
