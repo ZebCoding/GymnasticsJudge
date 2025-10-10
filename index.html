@@ -573,11 +573,11 @@
       // So we need to also check hip height as an indicator
       
       const avgHipY = (leftHip.y + rightHip.y) / 2;
-      const highHipPosition = avgHipY < 0.6; // Hips high in frame = likely airborne
-      const shortLegLength = avgLegLength < 0.15; // Legs pulled up = likely airborne or bent
+      const veryHighHipPosition = avgHipY < 0.4; // Much more conservative - hips very high = definitely airborne
+      const shortLegLength = avgLegLength < 0.12; // More strict leg length for primary airborne detection
       
-      // Airborne if: (short leg length) OR (high hip position AND reasonably short legs)
-      const actuallyAirborne = shortLegLength || (highHipPosition && avgLegLength < 0.25);
+      // Airborne if: (very short legs) OR (very high hips AND short legs)
+      const actuallyAirborne = shortLegLength || (veryHighHipPosition && avgLegLength < 0.20);
       
       // MOUNTING vs ROUTINE DETECTION:
       // Mounting = legs apart is OK, no deductions yet
@@ -591,7 +591,7 @@
       // SMARTER MOUNTING DETECTION:
       // Once we've seen proper airborne routine form, don't go back to mounting
       // unless clearly on ground with very long leg length (actual dismount)
-      const clearlyOnGround = avgLegLength > 0.3 && avgHipY > 0.7; // Low hips, long legs = on ground
+      const clearlyOnGround = avgLegLength > 0.35 && avgHipY > 0.75; // Very strict - low hips, very long legs = definitely on ground
       
       let isGrounded, mounting;
       
