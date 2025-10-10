@@ -1086,7 +1086,7 @@
       
       // Calculate foot position relative to mushroom center
       const relativeFootX = footCenterX - state.mushroomCenterX;
-      const oscillationThreshold = 0.08; // Feet move more dramatically than hips
+      const oscillationThreshold = 0.05; // More sensitive - catch smaller movements
       
       // Determine current oscillation position
       let currentPosition;
@@ -1183,6 +1183,23 @@
                 step3 = s2;
                 state.lastDirectCircleTime = now;
               }
+            }
+          }
+          
+          // Method 4: Repeated oscillations (for partial circles on one side)
+          if (!isFullCircle && steps.length >= 6) {
+            // Look for pattern like: right → center → right → center → right → center
+            const lastSix = steps.slice(-6);
+            const [s1, s2, s3, s4, s5, s6] = lastSix;
+            
+            // Check for alternating side-center-side pattern (3 complete oscillations)
+            if (s2 === 'center' && s4 === 'center' && s6 === 'center' &&
+                s1 === s3 && s3 === s5 && (s1 === 'left' || s1 === 'right')) {
+              isFullCircle = true;
+              circlePattern = lastSix;
+              circleType = 'repeated oscillation';
+              step1 = s1;
+              step3 = s1; // Same side
             }
           }
           
