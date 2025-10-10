@@ -675,7 +675,7 @@
       const rightKneeVis = (rightKnee && rightKnee.visibility) || 0;
       
       const avgLegVisibility = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
-      const allLegsHighlyVisible = avgLegVisibility > 0.85; // Much stricter visibility requirement
+      const allLegsHighlyVisible = avgLegVisibility > 0.70; // More reasonable visibility requirement for bending detection
       
       if (!allLegsHighlyVisible) {
         // When legs aren't clearly visible (behind pommel horse), assume proper form
