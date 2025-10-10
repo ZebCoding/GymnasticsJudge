@@ -641,14 +641,23 @@
         lastGroundCheckTime = now;
         
         // Track if gymnast has ever been airborne (both feet off ground)
-        // Trigger when airborne and not in mounting phase
+        // MORE CONSERVATIVE: Only trigger when clearly airborne AND not mounting
         if (!currentlyGrounded && !hasEverBeenAirborne && !groundStatus.mounting) {
-          hasEverBeenAirborne = true;
+          // Additional check: make sure this is sustained airborne, not just transitional
           const leftLegLength = landmarks[27].y - landmarks[23].y;
           const rightLegLength = landmarks[28].y - landmarks[24].y;
           const avgLegLength = (leftLegLength + rightLegLength) / 2;
           const avgHipY = (landmarks[23].y + landmarks[24].y) / 2;
-          console.log(`🚁 GYMNAST NOW AIRBORNE! Leg length:${avgLegLength.toFixed(3)}, Hip Y:${avgHipY.toFixed(3)} - deduction rules and circle counting now active`);
+          
+          // Only trigger if VERY clearly airborne (conservative thresholds)
+          const definitelyAirborne = avgLegLength < 0.10 && avgHipY < 0.5;
+          
+          if (definitelyAirborne) {
+            hasEverBeenAirborne = true;
+            console.log(`🚁 GYMNAST NOW AIRBORNE! Leg:${avgLegLength.toFixed(3)}, Hip:${avgHipY.toFixed(3)} - deduction rules and circle counting now active`);
+          } else {
+            console.log(`⏳ Airborne detected but waiting for clearer signal - Leg:${avgLegLength.toFixed(3)}, Hip:${avgHipY.toFixed(3)}`);
+          }
         }
         
         // Debug ground contact and mounting detection
@@ -1051,7 +1060,7 @@
           if (bendingSeverity > currentCircleWorstBending) {
             currentCircleWorstBending = bendingSeverity;
             if (bendingSeverity > 0) {
-              console.log(`🚨 BENDING SEVERITY RECORDED: ${bendingSeverity.toFixed(1)} for current circle`);
+              console.log(`🚨 BENDING SEVERITY RECORDED: ${bendingSeverity.toFixed(1)} for current circle (hasEverBeenAirborne: ${hasEverBeenAirborne})`);
               recordMistakeForReplay("bending", bendingSeverity);
             }
           }
@@ -1059,9 +1068,15 @@
           if (spreadingSeverity > currentCircleWorstSpreading) {
             currentCircleWorstSpreading = spreadingSeverity;
             if (spreadingSeverity > 0) {
-              console.log(`🚨 SPREADING SEVERITY RECORDED: ${spreadingSeverity.toFixed(1)} for current circle`);
+              console.log(`🚨 SPREADING SEVERITY RECORDED: ${spreadingSeverity.toFixed(1)} for current circle (hasEverBeenAirborne: ${hasEverBeenAirborne})`);
               recordMistakeForReplay("spreading", spreadingSeverity);
             }
+          }
+          
+          // Debug when form breaks are detected but not recorded
+          if ((bendingSeverity > 0 && bendingSeverity <= currentCircleWorstBending) || 
+              (spreadingSeverity > 0 && spreadingSeverity <= currentCircleWorstSpreading)) {
+            console.log(`🔄 Form break detected but not worse than current: Bend:${bendingSeverity.toFixed(1)}(worst:${currentCircleWorstBending.toFixed(1)}) Spread:${spreadingSeverity.toFixed(1)}(worst:${currentCircleWorstSpreading.toFixed(1)})`);
           }
           
           // Debug current form quality - MORE FREQUENT FOR DEBUGGING
