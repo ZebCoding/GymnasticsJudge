@@ -543,213 +543,11 @@
       return finalBowDetection;
     }
     
-    function detectGroundContact(landmarks) {
-      // Detect if gymnast's feet are on the ground or airborne
-      const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
-      const leftHip = landmarks[23], rightHip = landmarks[24];
-      const leftKnee = landmarks[25], rightKnee = landmarks[26];
-      
-      if (!leftAnkle || !rightAnkle || !leftHip || !rightHip) {
-        return { grounded: true, confidence: 'low', mounting: true }; // Assume grounded/mounting if can't see feet
-      }
-      
-      // Check visibility of both feet
-      const leftVis = leftAnkle.visibility || 1;
-      const rightVis = rightAnkle.visibility || 1;
-      const avgVisibility = (leftVis + rightVis) / 2;
-      const confidence = avgVisibility > 0.7 ? 'high' : 'low';
-      
-      // Calculate leg positions
-      const leftLegLength = leftAnkle.y - leftHip.y;
-      const rightLegLength = rightAnkle.y - rightHip.y;
-      const avgLegLength = (leftLegLength + rightLegLength) / 2;
-      
-      // Calculate how close legs are together (ankle distance)
-      const ankleDistance = Math.abs(leftAnkle.x - rightAnkle.x);
-      
-      // IMPROVED AIRBORNE DETECTION:
-      // Standard leg length when standing ~0.4, when airborne ~0.05-0.15
-      // BUT when legs are bent, ankles come up toward hips, reducing leg length
-      // So we need to also check hip height as an indicator
-      
-      const avgHipY = (leftHip.y + rightHip.y) / 2;
-      const veryHighHipPosition = avgHipY < 0.4; // Much more conservative - hips very high = definitely airborne
-      const shortLegLength = avgLegLength < 0.12; // More strict leg length for primary airborne detection
-      
-      // Airborne if: (very short legs) OR (very high hips AND short legs)
-      const actuallyAirborne = shortLegLength || (veryHighHipPosition && avgLegLength < 0.20);
-      
-      // MOUNTING vs ROUTINE DETECTION:
-      // Mounting = legs apart is OK, no deductions yet
-      // Routine = legs should be together, deductions apply
-      
-      // Key insight: During mounting, legs are often apart (0.15+ distance)
-      // During routine, legs should be close together (< 0.08 distance)
-      const legsApart = ankleDistance > 0.08; // Legs spread apart
-      const legsCloseish = ankleDistance < 0.08; // Legs close together
-      
-      // SMARTER MOUNTING DETECTION:
-      // Once we've seen proper airborne routine form, don't go back to mounting
-      // unless clearly on ground with very long leg length (actual dismount)
-      const clearlyOnGround = avgLegLength > 0.35 && avgHipY > 0.75; // Very strict - low hips, very long legs = definitely on ground
-      
-      let isGrounded, mounting;
-      
-      if (clearlyOnGround) {
-        // Clearly on ground = mounting or dismounted
-        isGrounded = true;
-        mounting = !hasEverBeenAirborne; // If we've been airborne before, this is dismount, not mounting
-        if (Math.random() < 0.05) {
-          const phase = mounting ? 'MOUNTING PHASE' : 'DISMOUNTED';
-          console.log(`🦶 ON GROUND: Ankle dist:${ankleDistance.toFixed(3)}, leg:${avgLegLength.toFixed(3)}, hip:${avgHipY.toFixed(3)} -> ${phase}`);
-        }
-      } else if (actuallyAirborne) {
-        // Airborne = routine phase (regardless of leg spacing for deduction tracking)
-        isGrounded = false;
-        mounting = false;
-        if (Math.random() < 0.05) {
-          const legState = legsCloseish ? 'legs close' : 'legs apart';
-          console.log(`🎢 AIRBORNE ROUTINE: leg:${avgLegLength.toFixed(3)}, hip:${avgHipY.toFixed(3)}, ${legState} (${ankleDistance.toFixed(3)}) -> ROUTINE PHASE`);
-        }
-      } else {
-        // Ambiguous state - use hasEverBeenAirborne to determine
-        isGrounded = true;
-        mounting = !hasEverBeenAirborne;
-        if (Math.random() < 0.05) {
-          const phase = mounting ? 'MOUNTING (ambiguous)' : 'GROUNDED (post-routine)';
-          console.log(`⏳ AMBIGUOUS: leg:${avgLegLength.toFixed(3)}, hip:${avgHipY.toFixed(3)}, ankle dist:${ankleDistance.toFixed(3)} -> ${phase}`);
-        }
-      }
-      
-      return { grounded: isGrounded, confidence: confidence, mounting: mounting };
-    }
+    // REMOVED COMPLEX GROUND CONTACT DETECTION - using simplified approach
     
-    function shouldApplyDeductions(landmarks) {
-      // Determine deduction rules based on ground contact and visibility
-      // 4 SCENARIOS FOR LEG CHECKING:
-      // 1. Legs off ground AND visible → Check bending (penalize), Check spreading (penalize) 
-      // 2. Legs behind pommel (not visible) → No checks (assume proper form)
-      // 3. Beginning (mounting) → Check bending (allow), Check spreading (allow)
-      // 4. Landed after routine → Check bending (allow), Check spreading (penalize)
-      
-      const now = performance.now();
-      
-      // Only check ground contact every 100ms to avoid excessive processing
-      if (now - lastGroundCheckTime > 100) {
-        const groundStatus = detectGroundContact(landmarks);
-        currentlyGrounded = groundStatus.grounded;
-        lastGroundCheckTime = now;
-        
-        // Track if gymnast has ever been airborne (both feet off ground)
-        // MORE CONSERVATIVE: Only trigger when clearly airborne AND not mounting
-        if (!currentlyGrounded && !hasEverBeenAirborne && !groundStatus.mounting) {
-          // Additional check: make sure this is sustained airborne, not just transitional
-          const leftLegLength = landmarks[27].y - landmarks[23].y;
-          const rightLegLength = landmarks[28].y - landmarks[24].y;
-          const avgLegLength = (leftLegLength + rightLegLength) / 2;
-          const avgHipY = (landmarks[23].y + landmarks[24].y) / 2;
-          
-          // Only trigger if VERY clearly airborne (conservative thresholds)
-          const definitelyAirborne = avgLegLength < 0.10 && avgHipY < 0.5;
-          
-          if (definitelyAirborne) {
-            hasEverBeenAirborne = true;
-            console.log(`🚁 GYMNAST NOW AIRBORNE! Leg:${avgLegLength.toFixed(3)}, Hip:${avgHipY.toFixed(3)} - deduction rules and circle counting now active`);
-          } else {
-            console.log(`⏳ Airborne detected but waiting for clearer signal - Leg:${avgLegLength.toFixed(3)}, Hip:${avgHipY.toFixed(3)}`);
-          }
-        }
-        
-        // Debug ground contact and mounting detection
-        if (Math.random() < 0.05) {
-          const leftLegLength = landmarks[27].y - landmarks[23].y;
-          const rightLegLength = landmarks[28].y - landmarks[24].y;
-          const avgLegLength = (leftLegLength + rightLegLength) / 2;
-          const leftVis = landmarks[27].visibility || 1;
-          const rightVis = landmarks[28].visibility || 1;
-          const ankleDistance = Math.abs(landmarks[27].x - landmarks[28].x);
-          console.log(`👣 Ground: ${currentlyGrounded ? 'ON GROUND' : 'AIRBORNE'}, L:${leftLegLength.toFixed(3)} R:${rightLegLength.toFixed(3)} avg:${avgLegLength.toFixed(3)}, Mounting:${groundStatus.mounting}, Ankle dist:${ankleDistance.toFixed(3)}, L vis:${leftVis.toFixed(2)} R vis:${rightVis.toFixed(2)}, Ever airborne: ${hasEverBeenAirborne}`);
-        }
-      }
-      
-      // Check if legs are clearly visible for reliable deduction detection
-      const leftAnkle = landmarks[27], rightAnkle = landmarks[28];
-      const leftKnee = landmarks[25], rightKnee = landmarks[26];
-      const leftHip = landmarks[23], rightHip = landmarks[24];
-      
-      // Much more conservative visibility check - require high visibility for all key landmarks
-      const leftAnkleVis = (leftAnkle && leftAnkle.visibility) || 0;
-      const rightAnkleVis = (rightAnkle && rightAnkle.visibility) || 0;
-      const leftKneeVis = (leftKnee && leftKnee.visibility) || 0;
-      const rightKneeVis = (rightKnee && rightKnee.visibility) || 0;
-      
-      const avgLegVisibility = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
-      const allLegsHighlyVisible = avgLegVisibility > 0.70; // More reasonable visibility requirement for bending detection
-      
-      if (!allLegsHighlyVisible) {
-        // When legs aren't clearly visible (behind pommel horse), assume proper form
-        if (Math.random() < 0.02) {
-          console.log(`🙈 Legs not clearly visible (visibility: ${avgLegVisibility.toFixed(2)}) - assuming proper form (no deductions)`);
-        }
-        return {
-          checkBending: false,
-          checkSpreading: false,
-          reason: `legs not clearly visible (${avgLegVisibility.toFixed(2)}) - assumed proper`
-        };
-      }
-      
-      // Apply deduction rules based on ground contact and routine progress
-      if (!hasEverBeenAirborne) {
-        // Beginning phase - mounting (feet on ground): bending OK, straddling OK
-        return {
-          checkBending: false,
-          checkSpreading: false,
-          reason: 'mounting phase - feet on ground, bending/straddling allowed'
-        };
-      } else if (!currentlyGrounded) {
-        // Airborne during routine: NO bending, NO straddling allowed  
-        return {
-          checkBending: true,
-          checkSpreading: true,
-          reason: 'airborne - no bending/straddling allowed'
-        };
-      } else {
-        // Landed after routine: bending OK, NO straddling
-        return {
-          checkBending: false,
-          checkSpreading: true,
-          reason: 'landed after routine - bending OK, no straddling'
-        };
-      }
-    }
+    // REMOVED COMPLEX DEDUCTION LOGIC - using simplified immediate deductions instead
     
-    function evaluateBendingSeverity(leftKneeAngle, rightKneeAngle, kneeThreshold = 160) {
-      // Evaluate how badly legs are bent (0.0 = perfect, 0.3 = worst)
-      const leftBend = Math.max(0, kneeThreshold - leftKneeAngle);
-      const rightBend = Math.max(0, kneeThreshold - rightKneeAngle);
-      const worstBend = Math.max(leftBend, rightBend);
-      
-      if (worstBend <= 5) return 0.0;  // No significant bending
-      if (worstBend <= 15) return 0.1; // Small bending (155-160°)
-      if (worstBend <= 30) return 0.2; // Medium bending (130-155°)
-      return 0.3;                       // Major bending (< 130°)
-    }
-    
-    function evaluateSpreadingSeverity(landmarks, hipDistance, ankleDist, kneeDist) {
-      // Evaluate how badly legs are spread (0.0 = perfect, 0.3 = worst)
-      const ankleRatio = ankleDist / hipDistance;
-      const kneeRatio = kneeDist / hipDistance;
-      
-      // Calculate worst spreading metric
-      const ankleSpread = Math.max(0, ankleRatio - 1.0); // Normal = 1.0
-      const kneeSpread = Math.max(0, kneeRatio - 1.0);   // Normal = 1.0
-      const worstSpread = Math.max(ankleSpread, kneeSpread);
-      
-      if (worstSpread <= 0.2) return 0.0; // No significant spreading
-      if (worstSpread <= 0.4) return 0.1; // Small spreading
-      if (worstSpread <= 0.6) return 0.2; // Medium spreading  
-      return 0.3;                          // Major spreading
-    }
+    // REMOVED COMPLEX EVALUATION FUNCTIONS - using simple boolean detection instead
     
     function evaluateStepSeverity(movementDistance) {
       // Evaluate step severity for landing deductions (0.1, 0.2, or 0.3)
@@ -1014,89 +812,51 @@
       // Also check absolute distance (for very wide stances)
       const maxAbsoluteAnkleDist = 0.3; // normalized coordinate distance
 
-      // Ground contact-based deduction logic - ONLY during ACTIVE routine state
+      // SIMPLIFIED DEDUCTION SYSTEM - immediate deductions during ACTIVE routine
       if (routineState === ROUTINE_STATES.ACTIVE) {
-        const deductionRules = shouldApplyDeductions(landmarks);
+        // Basic visibility check - only check when legs are reasonably visible
+        const leftAnkleVis = (landmarks[27] && landmarks[27].visibility) || 0;
+        const rightAnkleVis = (landmarks[28] && landmarks[28].visibility) || 0;
+        const leftKneeVis = (landmarks[25] && landmarks[25].visibility) || 0;
+        const rightKneeVis = (landmarks[26] && landmarks[26].visibility) || 0;
+        const avgLegVisibility = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
         
-        // Debug the current deduction rules occasionally
-        if (Math.random() < 0.01) {
-          console.log(`🎯 Deduction rules: ${deductionRules.reason}`);
-          console.log(`  Check bending: ${deductionRules.checkBending}, Check spreading: ${deductionRules.checkSpreading}`);
-        }
-        
-        // Simplified deduction system - shouldApplyDeductions already handles visibility
-        if (deductionRules.checkBending || deductionRules.checkSpreading) {
-          // Only apply basic validation for angle sanity
+        if (avgLegVisibility > 0.5) {
           const ankleDistance = Math.abs(landmarks[27].x - landmarks[28].x);
           const legsVeryCloseTogether = ankleDistance < 0.08;
           
-          let bendingSeverity = 0;
-          if (deductionRules.checkBending && !legsVeryCloseTogether) {
-            // Basic validation: check for extreme angle readings
+          let hasBending = false;
+          let hasSpreading = false;
+          
+          // Check for bending (if legs not very close together)
+          if (!legsVeryCloseTogether) {
             const leftValid = leftKneeAngle > 20 && leftKneeAngle < 200;
             const rightValid = rightKneeAngle > 20 && rightKneeAngle < 200;
             
             if (leftValid && rightValid) {
-              bendingSeverity = evaluateBendingSeverity(leftKneeAngle, rightKneeAngle, kneeThreshold);
-              if (bendingSeverity > 0 && Math.random() < 0.02) {
-                console.log(`🚨 BENDING DETECTED: ${bendingSeverity.toFixed(1)} - L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
-              }
-            } else {
-              if (Math.random() < 0.01) {
-                console.log(`⚠️ Skipping bending check - suspicious angles L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
-              }
+              const leftBend = Math.max(0, kneeThreshold - leftKneeAngle);
+              const rightBend = Math.max(0, kneeThreshold - rightKneeAngle);
+              const worstBend = Math.max(leftBend, rightBend);
+              hasBending = worstBend > 5; // Significant bending detected
             }
-          }
-          
-          let spreadingSeverity = 0;
-          if (deductionRules.checkSpreading && !legsVeryCloseTogether) {
-            spreadingSeverity = evaluateSpreadingSeverity(landmarks, hipDistance, ankleDist, kneeDist);
-            if (spreadingSeverity > 0 && Math.random() < 0.02) {
-              console.log(`🚨 SPREADING DETECTED: ${spreadingSeverity.toFixed(1)} - Ankle dist: ${ankleDist.toFixed(3)}`);
-            }
-          }
-          
-          // Track worst mistakes in current circle
-          if (bendingSeverity > currentCircleWorstBending) {
-            currentCircleWorstBending = bendingSeverity;
-            if (bendingSeverity > 0) {
-              console.log(`🚨 BENDING SEVERITY RECORDED: ${bendingSeverity.toFixed(1)} for current circle (hasEverBeenAirborne: ${hasEverBeenAirborne})`);
-              recordMistakeForReplay("bending", bendingSeverity);
-            }
-          }
-          
-          if (spreadingSeverity > currentCircleWorstSpreading) {
-            currentCircleWorstSpreading = spreadingSeverity;
-            if (spreadingSeverity > 0) {
-              console.log(`🚨 SPREADING SEVERITY RECORDED: ${spreadingSeverity.toFixed(1)} for current circle (hasEverBeenAirborne: ${hasEverBeenAirborne})`);
-              recordMistakeForReplay("spreading", spreadingSeverity);
-            }
-          }
-          
-          // Debug when form breaks are detected but not recorded
-          if ((bendingSeverity > 0 && bendingSeverity <= currentCircleWorstBending) || 
-              (spreadingSeverity > 0 && spreadingSeverity <= currentCircleWorstSpreading)) {
-            console.log(`🔄 Form break detected but not worse than current: Bend:${bendingSeverity.toFixed(1)}(worst:${currentCircleWorstBending.toFixed(1)}) Spread:${spreadingSeverity.toFixed(1)}(worst:${currentCircleWorstSpreading.toFixed(1)})`);
-          }
-          
-          // Debug current form quality - MORE FREQUENT FOR DEBUGGING
-          if (Math.random() < 0.03) {
-            console.log(`🔍 Form check - Bending: ${bendingSeverity.toFixed(1)}, Spreading: ${spreadingSeverity.toFixed(1)}, Circle worst: B${currentCircleWorstBending.toFixed(1)}/S${currentCircleWorstSpreading.toFixed(1)}`);
-            console.log(`🔍 Deduction rules: checkBending=${deductionRules.checkBending}, checkSpreading=${deductionRules.checkSpreading}, reason='${deductionRules.reason}'`);
-            console.log(`🔍 Basic checks - legsVeryClose: ${legsVeryCloseTogether}, ankleDistance: ${ankleDistance.toFixed(3)}, L:${leftKneeAngle.toFixed(1)}° R:${rightKneeAngle.toFixed(1)}°`);
             
-            // Debug leg visibility
-            const leftAnkleVis = (landmarks[27] && landmarks[27].visibility) || 0;
-            const rightAnkleVis = (landmarks[28] && landmarks[28].visibility) || 0;
-            const leftKneeVis = (landmarks[25] && landmarks[25].visibility) || 0;
-            const rightKneeVis = (landmarks[26] && landmarks[26].visibility) || 0;
-            const avgVis = (leftAnkleVis + rightAnkleVis + leftKneeVis + rightKneeVis) / 4;
-            console.log(`🔍 Visibility - LAnkle:${leftAnkleVis.toFixed(2)} RAnkle:${rightAnkleVis.toFixed(2)} LKnee:${leftKneeVis.toFixed(2)} RKnee:${rightKneeVis.toFixed(2)} Avg:${avgVis.toFixed(2)}`);
+            // Check for spreading
+            const ankleRatio = ankleDist / hipDistance;
+            const kneeRatio = kneeDist / hipDistance;
+            const ankleSpread = Math.max(0, ankleRatio - 1.0);
+            const kneeSpread = Math.max(0, kneeRatio - 1.0);
+            const worstSpread = Math.max(ankleSpread, kneeSpread);
+            hasSpreading = worstSpread > 0.2; // Significant spreading detected
+          }
+          
+          // Apply immediate deductions with grouping
+          if (hasBending || hasSpreading) {
+            applyImmediateDeduction(hasBending, hasSpreading);
           }
         } else {
-          // Log when deductions are not being applied
-          if (Math.random() < 0.005) {
-            console.log(`📝 Form monitoring paused: ${deductionRules.reason}`);
+          // Log when visibility is too low occasionally
+          if (Math.random() < 0.01) {
+            console.log(`👁️ Visibility too low for deductions: ${avgLegVisibility.toFixed(2)}`);
           }
         }
       }
@@ -1256,12 +1016,7 @@
         }
         return;
       }
-      if (!hasEverBeenAirborne) {
-        if (Math.random() < 0.01) {
-          console.log(`🚫 Circle detection blocked - not airborne yet`);
-        }
-        return; // Only count circles during routine, not mounting
-      }
+      // SIMPLIFIED - no airborne requirement, just count circles during active routine
       
       // Get required landmarks for mushroom-center and foot tracking
       const leftWrist = landmarks[15], rightWrist = landmarks[16];
@@ -1440,15 +1195,6 @@
                 circleCount++;
                 console.log(`🎯 Circle ${circleCount} COMPLETED! Pattern: ${circlePattern.join(' → ')} (${circleType} - matches rotation)`);
                 
-                // Apply deduction for completed circle
-                applyCircleDeduction(circleCount, currentCircleWorstBending, currentCircleWorstSpreading);
-                
-                // Reset for next circle
-                currentCircleWorstBending = 0;
-                currentCircleWorstSpreading = 0;
-                state.lastCircleTime = now;
-                state.lastCircleCountTime = now;
-                
                 // Update display
                 circleCountDisplay.textContent = `Circles: ${circleCount}`;
                 
@@ -1481,47 +1227,70 @@
       state.lastFootPosition = { x: footCenterX, y: footCenterY };
     }
     
-    function applyCircleDeduction(circleNumber, bendingSeverity, spreadingSeverity) {
-      // Apply single deduction for completed circle based on worst mistake
-      const worstMistake = Math.max(bendingSeverity, spreadingSeverity);
-      
-      if (worstMistake === 0) {
-        console.log(`✨ Circle ${circleNumber} completed with perfect form - no deduction`);
-        return;
-      }
-      
+    let lastDeductionTime = 0;
+    let pendingDeductions = [];
+    
+    function applyImmediateDeduction(hasBending, hasSpreading) {
       const now = performance.now();
       const videoTime = (now - routineStartTime) / 1000;
       
-      // Apply the deduction
-      score = Math.max(5.0, score - worstMistake);
+      // Check if this is within 0.3 seconds of the last deduction
+      const timeSinceLastDeduction = (now - lastDeductionTime) / 1000;
       
-      // Create descriptive reason
-      let reason = `Circle ${circleNumber}: `;
-      if (worstMistake === 0.1) reason += "Minor form break";
-      else if (worstMistake === 0.2) reason += "Moderate form break";
-      else reason += "Major form break";
-      
-      if (bendingSeverity > 0 && spreadingSeverity > 0) {
-        reason += " (bending + spreading)";
-      } else if (bendingSeverity > 0) {
-        reason += " (leg bending)";
+      if (timeSinceLastDeduction <= 0.3 && pendingDeductions.length > 0) {
+        // Group with existing pending deduction
+        const existing = pendingDeductions[pendingDeductions.length - 1];
+        if (hasBending && !existing.bending) existing.bending = true;
+        if (hasSpreading && !existing.spreading) existing.spreading = true;
+        existing.time = videoTime; // Update to latest time
+        console.log(`🔄 Grouped deduction - Bending: ${existing.bending}, Spreading: ${existing.spreading}`);
       } else {
-        reason += " (legs spread)";
+        // Create new deduction
+        pendingDeductions.push({
+          bending: hasBending,
+          spreading: hasSpreading,
+          time: videoTime,
+          applied: false
+        });
+        
+        // Apply the deduction after a short delay to allow for grouping
+        setTimeout(() => {
+          const deduction = pendingDeductions[pendingDeductions.length - 1];
+          if (!deduction.applied) {
+            deduction.applied = true;
+            
+            // Calculate deduction amount
+            let deductionAmount = 0;
+            let reason = "";
+            
+            if (deduction.bending && deduction.spreading) {
+              deductionAmount = 0.2;
+              reason = "Bending and spreading";
+            } else if (deduction.bending) {
+              deductionAmount = 0.1;
+              reason = "Leg bending";
+            } else if (deduction.spreading) {
+              deductionAmount = 0.1;
+              reason = "Legs spread";
+            }
+            
+            // Apply to score
+            score = Math.max(5.0, score - deductionAmount);
+            
+            console.log(`🚨 DEDUCTION APPLIED: -${deductionAmount} (${reason}) - Score: ${score.toFixed(1)}`);
+            
+            // Record for replay
+            deductionTimestamps.push({
+              time: deduction.time,
+              reason: reason,
+              deduction: deductionAmount,
+              score: score.toFixed(1)
+            });
+          }
+        }, 300); // Wait 300ms to allow grouping
       }
       
-      console.log(`🔄 CIRCLE ${circleNumber} COMPLETE: Deduction -${worstMistake} (${reason}) - Score: ${score.toFixed(1)}`);
-      
-      // Record for replay - but don't pause at circle completion, pause happened during mistake
-      circleDeductions.push({
-        circleNumber: circleNumber,
-        deduction: worstMistake,
-        reason: reason,
-        time: videoTime,
-        score: score.toFixed(1)
-      });
-      
-      // Don't update score display during routine - scores only shown during replay
+      lastDeductionTime = now;
     }
     
     function applyStepDeduction(stepSeverity, stepNumber) {
@@ -1624,17 +1393,9 @@
       circleCountDisplay.textContent = 'Circles: 0.00';
       window.circleDetectionState = undefined; // Reset visibility tracking
       
-      // Reset ground contact tracking
-      hasEverBeenAirborne = false;
-      currentlyGrounded = true;
-      lastGroundCheckTime = 0;
-      
-      // Reset circle-based deduction tracking
-      currentCircleStartTime = routineStartTime;
-      currentCircleWorstBending = 0;
-      currentCircleWorstSpreading = 0;
-      currentCircleDeductionApplied = false;
-      circleDeductions = [];
+      // Reset simplified deduction tracking
+      lastDeductionTime = 0;
+      pendingDeductions = [];
       window.stepCount = 0; // Reset step counter
       
       console.log('🧹 All deduction tracking reset - starting fresh for new routine');
@@ -1702,7 +1463,9 @@
       const videoUrl = URL.createObjectURL(recordedVideoBlob);
       replayVideo.src = videoUrl;
       
-      console.log(`Starting replay with ${deductionTimestamps.length} deductions to pause at:`, deductionTimestamps);
+      // Skip first deduction (assume it's mounting)
+      const replayDeductions = deductionTimestamps.length > 0 ? deductionTimestamps.slice(1) : [];
+      console.log(`Starting replay with ${replayDeductions.length} deductions to pause at (skipped first deduction):`, replayDeductions);
       
       // Start countdown
       let countdown = 3;
@@ -1732,6 +1495,9 @@
       let currentDeductionIndex = 0;
       let isPaused = false;
       
+      // Skip first deduction (mounting) - use filtered list
+      const replayDeductions = deductionTimestamps.length > 0 ? deductionTimestamps.slice(1) : [];
+      
       replayVideo.play();
       
       // Define the deduction checking function so we can remove it later
@@ -1739,8 +1505,8 @@
         const currentTime = replayVideo.currentTime;
         
         // Check if we need to pause at a deduction
-        if (!isPaused && currentDeductionIndex < deductionTimestamps.length) {
-          const nextDeduction = deductionTimestamps[currentDeductionIndex];
+        if (!isPaused && currentDeductionIndex < replayDeductions.length) {
+          const nextDeduction = replayDeductions[currentDeductionIndex];
           
           // Pause if we've reached or passed the deduction time
           if (currentTime >= nextDeduction.time) {
@@ -1759,7 +1525,7 @@
               isPaused = false;
               replayVideo.play();
               
-              if (currentDeductionIndex < deductionTimestamps.length) {
+              if (currentDeductionIndex < replayDeductions.length) {
                 replayStatus.textContent = 'Playing routine - will pause at next deduction';
                 replayStatus.style.display = 'block';
               } else {
