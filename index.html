@@ -1305,7 +1305,7 @@
             console.log(`🚨 DEDUCTION APPLIED: -${deductionAmount} (${reason}) - Score: ${score.toFixed(1)}`);
             
             // Record for replay - subtract processing delay to pause closer to actual mistake
-            const processingDelay = 0.3; // Assume ~300ms processing delay
+            const processingDelay = 0.2; // Assume ~300ms processing delay
             const adjustedTime = Math.max(0, deduction.time - processingDelay);
             
             deductionTimestamps.push({
@@ -1340,7 +1340,7 @@
       console.log(`👣 STEP DEDUCTION: -${stepSeverity} (${reason}) - Score: ${score.toFixed(1)}`);
       
       // Record timestamp for replay pausing - subtract processing delay
-      const processingDelay = 0.1;
+      const processingDelay = 0.2;
       const adjustedTime = Math.max(0, videoTime - processingDelay);
       
       deductionTimestamps.push({
