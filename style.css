@@ -3,22 +3,33 @@ body {
   color: white;
   font-family: Arial;
   text-align: center;
+  margin: 0;
+  padding: 0;
+}
+
+h1 {
+  margin: 20px 0;
 }
 
 .container {
   position: relative;
-  display: inline-block;
+  width: 90vw; /* almost full width */
+  max-width: 1280px;
+  margin: auto;
 }
 
 video, canvas {
-  width: 640px;
-  height: 480px;
-  position: absolute;
-  left: 0;
-  top: 0;
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
-.results {
-  margin-top: 500px;
-  font-size: 20px;
+.overlay_results {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0,0,0,0.5);
+  padding: 10px 15px;
+  border-radius: 10px;
+  font-size: 18px;
 }
