@@ -1,35 +1,35 @@
-body {
-  background: #111;
-  color: white;
-  font-family: Arial;
-  text-align: center;
+html, body {
   margin: 0;
   padding: 0;
-}
-
-h1 {
-  margin: 20px 0;
+  height: 100%;
+  overflow: hidden;
+  background: #111;
+  font-family: Arial;
+  color: white;
 }
 
 .container {
   position: relative;
-  width: 90vw; /* almost full width */
-  max-width: 1280px;
-  margin: auto;
+  width: 100vw;
+  height: 100vh;
 }
 
 video, canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-  height: auto;
-  display: block;
+  height: 100%;
+  object-fit: cover; /* fills screen nicely */
 }
 
 .overlay_results {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 20px;
+  left: 20px;
   background: rgba(0,0,0,0.5);
-  padding: 10px 15px;
-  border-radius: 10px;
-  font-size: 18px;
+  padding: 15px 20px;
+  border-radius: 12px;
+  font-size: 22px;
+  line-height: 1.5;
 }
