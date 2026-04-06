@@ -30,8 +30,9 @@ function onResults(results) {
   );
 
   if (results.poseLandmarks) {
-    drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS);
-    drawLandmarks(canvasCtx, results.poseLandmarks);
+    // Draw skeleton with bigger lines
+    drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 6});
+    drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 6, radius: 6});
 
     const lm = results.poseLandmarks;
 
