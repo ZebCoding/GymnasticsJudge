@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pommel ML Judge</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+</head>
+<body>
+  <h1>Pommel Horse ML Judge</h1>
+
+  <div class="container">
+    <video class="input_video" autoplay playsinline></video>
+    <canvas class="output_canvas"></canvas>
+  </div>
+
+  <div class="results">
+    <p id="bent">Bent Legs: ❌</p>
+    <p id="apart">Legs Apart: ❌</p>
+    <p id="salute">Salute: ❌</p>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
