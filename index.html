@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Camera Fullscreen Fit</title>
+<title>Gymnastics Salute Detection</title>
 <style>
   html, body {
     margin: 0;
@@ -11,22 +11,112 @@
     width: 100%;
     height: 100%;
     background: black;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    overflow: hidden;
   }
 
-  #video {
-    object-fit: contain; /* keeps aspect ratio, no cropping */
+  #video, #overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    max-width: 100%;
-    max-height: 100%;
+    object-fit: cover;
+  }
+
+  #status {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: lime;
+    font-size: 2em;
+    font-family: sans-serif;
+    text-shadow: 0 0 5px black;
   }
 </style>
 </head>
 <body>
 <video id="video" autoplay playsinline></video>
-<script src="script.js"></script>
+<canvas id="overlay"></canvas>
+<div id="status">Stand straight and lift your arm!</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+const statusDiv = document.getElementById('status');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Initialize MediaPipe Pose
+const pose = new Pose.Pose({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+});
+
+pose.setOptions({
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  enableSegmentation: false,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
+
+pose.onResults(onPoseResults);
+
+// Start camera
+const camera = new Camera(video, {
+  onFrame: async () => await pose.send({image: video}),
+  width: 1280,
+  height: 720
+});
+camera.start();
+
+// Resize overlay canvas
+window.addEventListener('resize', () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
+function onPoseResults(results) {
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+  if (!results.poseLandmarks) {
+    statusDiv.textContent = "No body detected!";
+    return;
+  }
+
+  // Draw skeleton
+  drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+  drawLandmarks(ctx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2});
+
+  const lm = results.poseLandmarks;
+
+  const leftWrist = lm[15];
+  const rightWrist = lm[16];
+  const leftShoulder = lm[11];
+  const rightShoulder = lm[12];
+  const leftHip = lm[23];
+  const rightHip = lm[24];
+
+  // Body roughly vertical
+  const torsoStraight = Math.abs((leftShoulder.x + rightShoulder.x)/2 - (leftHip.x + rightHip.x)/2) < 0.05;
+
+  // Arm straight up
+  const leftArmUp = leftWrist.y < leftShoulder.y && Math.abs(leftWrist.x - leftShoulder.x) < 0.1;
+  const rightArmUp = rightWrist.y < rightShoulder.y && Math.abs(rightWrist.x - rightShoulder.x) < 0.1;
+
+  if (torsoStraight && (leftArmUp || rightArmUp)) {
+    statusDiv.textContent = "Gymnastics Salute Detected!";
+  } else {
+    statusDiv.textContent = "Stand straight and lift your arm!";
+  }
+}
+</script>
 </body>
 </html>
