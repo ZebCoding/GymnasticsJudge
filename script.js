@@ -2,7 +2,6 @@ const videoElement = document.querySelector('.input_video');
 const canvasElement = document.querySelector('.output_canvas');
 const canvasCtx = canvasElement.getContext('2d');
 
-// UI elements
 const bentText = document.getElementById("bent");
 const apartText = document.getElementById("apart");
 const saluteText = document.getElementById("salute");
@@ -19,18 +18,14 @@ function getAngle(a, b, c) {
   return Math.acos(dot / (magAB * magCB)) * (180 / Math.PI);
 }
 
-// Main results handler
 function onResults(results) {
   canvasCtx.save();
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-  canvasCtx.drawImage(
-    results.image, 0, 0,
-    canvasElement.width, canvasElement.height
-  );
+  canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
   if (results.poseLandmarks) {
-    // Draw skeleton with bigger lines
+    // draw skeleton with bigger lines
     drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 6});
     drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 6, radius: 6});
 
@@ -40,7 +35,6 @@ function onResults(results) {
     const leftHip = lm[23];
     const leftKnee = lm[25];
     const leftAnkle = lm[27];
-
     const rightHip = lm[24];
     const rightKnee = lm[26];
     const rightAnkle = lm[28];
@@ -50,33 +44,28 @@ function onResults(results) {
     const leftWrist = lm[15];
     const rightWrist = lm[16];
 
-    // ✅ Bent legs
+    // ✅ Bent legs detection
     let leftAngle = getAngle(leftHip, leftKnee, leftAnkle);
     let rightAngle = getAngle(rightHip, rightKnee, rightAnkle);
-
     if (leftAngle < 160 || rightAngle < 160) {
-      bentText.innerText = "Bent Legs: ✅";
+      bentText.style.display = "block";
     } else {
-      bentText.innerText = "Bent Legs: ❌";
+      bentText.style.display = "none";
     }
 
-    // ✅ Legs apart
+    // ✅ Legs apart detection
     let ankleDist = Math.abs(leftAnkle.x - rightAnkle.x);
-
     if (ankleDist > 0.2) {
-      apartText.innerText = "Legs Apart: ✅";
+      apartText.style.display = "block";
     } else {
-      apartText.innerText = "Legs Apart: ❌";
+      apartText.style.display = "none";
     }
 
-    // ✅ Salute
-    if (
-      leftWrist.y < leftShoulder.y &&
-      rightWrist.y < rightShoulder.y
-    ) {
-      saluteText.innerText = "Salute: ✅";
+    // ✅ Salute detection
+    if (leftWrist.y < leftShoulder.y && rightWrist.y < rightShoulder.y) {
+      saluteText.style.display = "block";
     } else {
-      saluteText.innerText = "Salute: ❌";
+      saluteText.style.display = "none";
     }
   }
 
@@ -85,9 +74,7 @@ function onResults(results) {
 
 // Setup MediaPipe Pose
 const pose = new Pose({
-  locateFile: (file) => {
-    return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-  }
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
 });
 
 pose.setOptions({
@@ -101,11 +88,9 @@ pose.onResults(onResults);
 
 // Camera setup
 const camera = new Camera(videoElement, {
-  onFrame: async () => {
-    await pose.send({ image: videoElement });
-  },
-  width: 640,
-  height: 480
+  onFrame: async () => { await pose.send({image: videoElement}); },
+  width: 1280,
+  height: 720
 });
 
 camera.start();
