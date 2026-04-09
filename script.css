@@ -1,0 +1,18 @@
+#fakeButton {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+
+  width: 180px;
+  height: 60px;
+
+  background: #0b3d91; /* dark blue */
+  border-radius: 30px; /* rounded pill shape */
+
+  opacity: 0.85; /* slightly see-through */
+  
+  pointer-events: none; /* makes it NOT clickable */
+
+  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+}
