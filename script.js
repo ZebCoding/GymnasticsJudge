@@ -33,14 +33,36 @@ pose.setOptions({
 
 pose.onResults(onPoseResults);
 
-// Start camera
+// DEBUG MODE: Use video file instead of live camera
+// Replace 'test-video.mp4' with your video file path
+video.src = 'test-video.mp4';
+
+video.onloadedmetadata = () => {
+  resizeVideo();
+  
+  // Process video frames continuously
+  const processFrame = async () => {
+    if (!video.paused && !video.ended) {
+      await pose.send({ image: video });
+      requestAnimationFrame(processFrame);
+    }
+  };
+  
+  video.addEventListener('play', () => {
+    processFrame();
+  });
+  
+  video.play();
+};
+
+/*
+// LIVE CAMERA MODE (uncomment later)
 navigator.mediaDevices.getUserMedia({ video: true, audio: false })
   .then(stream => {
     video.srcObject = stream;
     
     video.onloadedmetadata = () => {
       resizeVideo();
-      // Attach camera to MediaPipe
       const camera = new Camera(video, {
         onFrame: async () => {
           await pose.send({ image: video });
@@ -55,6 +77,7 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: false })
     console.error("Camera access error:", err);
     alert("Unable to access your camera. Please allow camera permissions.");
   });
+*/
 
 // Handle pose detection results
 function onPoseResults(results) {
