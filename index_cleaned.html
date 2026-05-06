@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gymnastics Judge AI - Pommel Horse/Mushroom</title>
+  
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #000; color: white; overflow: hidden; }
+    
+    /* Fullscreen video container */
+    .video-fullscreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+    
+    #camera, #replayVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border: none;
+      background: #000;
+    }
+    
+    /* Overlay UI elements */
+    .ui-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 15%, transparent 85%, rgba(0,0,0,0.7) 100%);
+    }
+    
+    /* Top bar with score and status */
+    .top-bar {
+      position: absolute;
+      top: 20px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+      pointer-events: none;
+    }
+    
+    .score {
+      font-size: 4em;
+      font-weight: bold;
+      color: #00ff00;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      margin: 0;
+    }
+    
+    .status-info {
+      text-align: right;
+      font-size: 1.2em;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    }
+    
+    #poseStatus {
+      margin: 0;
+      font-weight: bold;
+    }
+    
+    /* Bottom controls */
+    .bottom-controls {
+      position: absolute;
+      bottom: 30px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      pointer-events: all;
+    }
+    
+    button {
+      padding: 20px 30px;
+      margin: 0 10px;
+      font-size: 1.3em;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      background: rgba(0, 123, 255, 0.9);
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    
+    button:hover {
+      background: rgba(0, 86, 179, 0.95);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+    }
+    
+    button:disabled {
+      background: rgba(85, 85, 85, 0.7);
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    /* Replay status overlay - positioned at top */
+    .replay-status {
+      position: absolute;
+      top: 100px; /* Below the score and status bar */
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.9);
+      padding: 15px 25px;
+      border-radius: 8px;
+      font-size: 1.3em;
+      font-weight: bold;
+      text-align: center;
+      pointer-events: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    /* Hide replay section initially */
+    #replaySection {
+      display: none;
+      z-index: 5; /* Above camera feed but below UI overlay */
+    }
+    
+    
+    /* Mobile adjustments */
+    @media (max-width: 768px) {
+      .score {
+        font-size: 3em;
+      }
+      
+      .status-info {
+        font-size: 1em;
+      }
+      
+      button {
+        padding: 18px 25px;
+        font-size: 1.2em;
+      }
+      
+      .top-bar {
+        padding: 0 15px;
+      }
+      
+      .replay-status {
+        font-size: 1.2em;
+        padding: 12px 20px;
+        top: 90px; /* Closer to top bar on mobile */
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .score {
+        font-size: 2.5em;
+      }
+      
+      .status-info {
+        font-size: 0.9em;
+      }
+      
+      button {
+        padding: 15px 20px;
+        font-size: 1.1em;
+        margin: 0 5px;
+      }
+      
+      .replay-status {
+        font-size: 1.0em;
+        padding: 10px 15px;
+        top: 80px; /* Even closer on small screens */
+      }
+    }
+  </style>
+  <!-- Load MediaPipe Pose -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+</head>
+<body>
+  <!-- Main camera video (fullscreen) -->
+  <div class="video-fullscreen">
+    <video id="camera" autoplay playsinline></video>
+  </div>
+  
+  <!-- Replay video (overlays camera when active) -->
+  <div id="replaySection" class="video-fullscreen">
+    <video id="replayVideo"></video>
+  </div>
+  
+  <!-- UI Overlay -->
+  <div class="ui-overlay">
+    <!-- Top bar with score and status -->
+    <div class="top-bar">
+      <div class="score">Score: <span id="score">10.0</span></div>
+      <div class="status-info">
+        <div id="poseStatus">Pose: Not detecting</div>
+        <div id="circleCount" style="font-size: 1.5em; font-weight: bold; margin-top: 5px;">Circles: 0.00</div>
+      </div>
+    </div>
+    
+    <!-- Bottom controls -->
+    <div class="bottom-controls">
+      <button id="startRoutine">Ready for Routine</button>
+      <button id="closeReplay" style="display: none;">Close Replay & Ready for Next</button>
+    </div>
+    
+    <!-- Replay status overlay (center screen) -->
+    <div id="replayStatus" class="replay-status" style="display: none;">
+      Replay starting in 3 seconds...
+    </div>
+    
+  </div>
+
+  <script>
+    console.log('🚀 Gymnastics Judge Frontend Loading...');
+    const video = document.getElementById('camera');
+    const scoreDisplay = document.getElementById('score');
+    const poseStatus = document.getElementById('poseStatus');
+    const circleCountDisplay = document.getElementById('circleCount');
+    const replaySection = document.getElementById('replaySection');
+    const replayVideo = document.getElementById('replayVideo');
+    const replayStatus = document.getElementById('replayStatus');
+
+    const startBtn = document.getElementById('startRoutine');
+    const closeReplayBtn = document.getElementById('closeReplay');
+    
+    // ONLY browser-related variables remain here
+    let mediaStream;
+    let mediaRecorder;
+    let recordedChunks = [];
+    let routineStartTime = 0;
+    let recordedVideoBlob = null;
+    let deductionTimestamps = [];
+    let routineStarted = false;
+    
+    // Frame rate limiting
+    let lastFrameTime = 0;
+    const TARGET_FPS = 15;
+    const FRAME_INTERVAL = 1000 / TARGET_FPS;
+    
+    // Backend API endpoint
+    const API_BASE = 'http://localhost:8000/api';
+
+    // Get camera and start pose detection immediately with fallback options
+    console.log('🎥 Requesting camera access...');
+    
+    async function initializeCamera() {
+      const constraints = [
+        // Try high quality first
+        { 
+          video: { 
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            facingMode: 'user',
+            frameRate: { ideal: 30, max: 60 }
+          } 
+        },
+        // Fallback to medium quality
+        { 
+          video: { 
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user'
+          } 
+        },
+        // Fallback to basic video
+        { video: { facingMode: 'user' } },
+        // Final fallback - any video
+        { video: true }
+      ];
+      
+      for (let i = 0; i < constraints.length; i++) {
+        try {
+          console.log(`🔍 Trying camera option ${i + 1}/${constraints.length}...`);
+          const stream = await navigator.mediaDevices.getUserMedia(constraints[i]);
+          
+          console.log('✅ Camera stream obtained');
+          mediaStream = stream; 
+          video.srcObject = stream;
+          
+          // Force video to play - set muted to avoid autoplay restrictions
+          video.muted = true;
+          try {
+            await video.play();
+            console.log('📹 Video playing successfully');
+          } catch (playErr) {
+            console.error('❌ Video play error:', playErr);
+            video.setAttribute('playsinline', true);
+            video.setAttribute('muted', true);
+            try {
+              await video.play();
+              console.log('📹 Video playing successfully after recovery attempt');
+            } catch (secondPlayErr) {
+              console.error('❌ Second video play attempt failed:', secondPlayErr);
+            }
+          }
+          
+          video.addEventListener('loadeddata', () => {
+            console.log('📊 Video loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
+            waitForPoseInitAndStart();
+          });
+          
+          setTimeout(() => {
+            console.log('⏰ Backup timer: Force starting pose detection...');
+            waitForPoseInitAndStart();
+          }, 3000);
+          
+          return;
+          
+        } catch (err) {
+          console.warn(`⚠️ Camera option ${i + 1} failed:`, err.message);
+          if (i === constraints.length - 1) {
+            console.error('❌ All camera options failed:', err);
+            alert(`Camera not available: ${err.message}\n\nTry:\n1. Closing other apps using camera\n2. Refreshing the page\n3. Checking browser permissions`); 
+          }
+        }
+      }
+    }
+    
+    initializeCamera();
+
+    // Setup MediaPipe Pose with error handling
+    let pose;
+    let poseInitialized = false;
+    
+    function initializeMediaPipe() {
+      try {
+        console.log('Initializing MediaPipe Pose...');
+        pose = new Pose({locateFile: (file) => {
+          const url = `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`;
+          console.log('Loading MediaPipe file:', url);
+          return url;
+        }});
+        pose.setOptions({
+          modelComplexity: 1, 
+          smoothLandmarks: true, 
+          enableSegmentation: false,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+        pose.onResults(onResults);
+        poseInitialized = true;
+        console.log('MediaPipe Pose initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize MediaPipe Pose:', error);
+        poseInitialized = false;
+        alert('Failed to load pose detection. Please refresh the page.');
+      }
+    }
+    
+    initializeMediaPipe();
+
+    function waitForPoseInitAndStart() {
+      if (poseInitialized && video.videoWidth > 0 && video.videoHeight > 0) {
+        console.log('🚀 Both MediaPipe and video ready - starting pose detection!');
+        detectPose();
+      } else {
+        console.log('⏳ Waiting for MediaPipe or video to be ready...');
+        setTimeout(waitForPoseInitAndStart, 500);
+      }
+    }
+
+    async function detectPose() {
+      const now = performance.now();
+      
+      if (now - lastFrameTime < FRAME_INTERVAL) {
+        requestAnimationFrame(detectPose);
+        return;
+      }
+      lastFrameTime = now;
+      
+      try {
+        if (poseInitialized && pose && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          if (!video.paused && !video.ended) {
+            await pose.send({image: video});
+          }
+        }
+      } catch (error) {
+        console.error('Pose detection error:', error);
+      }
+      
+      requestAnimationFrame(detectPose);
+    }
+
+    async function onResults(results) {
+      if (!results.poseLandmarks) {
+        poseStatus.textContent = 'Pose: Searching...';
+        poseStatus.style.color = '#ffc107';
+        return;
+      }
+
+      // ✅ ALL PROCESSING NOW HAPPENS IN PYTHON BACKEND
+      try {
+        const response = await fetch(`${API_BASE}/process-frame`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ landmarks: results.poseLandmarks })
+        });
+        
+        const data = await response.json();
+        
+        // Update UI with backend results
+        scoreDisplay.textContent = data.score.toFixed(1);
+        circleCountDisplay.textContent = `Circles: ${data.circle_count}`;
+        
+        poseStatus.textContent = data.pose_status;
+        if (data.pose_status.includes('✓') || data.pose_status.includes('tracking')) {
+          poseStatus.style.color = '#4caf50';
+        } else if (data.pose_status.includes('waiting') || data.pose_status.includes('routine')) {
+          poseStatus.style.color = '#ff9800';
+        } else {
+          poseStatus.style.color = '#ff5722';
+        }
+        
+        // Handle events from backend
+        if (data.events.includes('salute_detected')) {
+          startRoutineAutomatically();
+        }
+        if (data.events.includes('bow_detected')) {
+          endRoutineAutomatically();
+        }
+        
+        // Update deduction timestamps for replay
+        deductionTimestamps = data.deductions;
+        
+      } catch (err) {
+        console.warn('Backend connection failed, running locally:', err);
+      }
+    }
+    
+    function startRoutineAutomatically() {
+      if (!mediaStream) return;
+      
+      routineStarted = true;
+      
+      startBtn.disabled = true;
+      
+      // Hide score during routine - will be revealed during replay
+      scoreDisplay.parentElement.style.display = 'none';
+      
+      // Record routine start time for video timing
+      routineStartTime = performance.now();
+      
+      // Setup MediaRecorder
+      recordedChunks = [];
+      
+      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "video/webm" });
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        recordedVideoBlob = new Blob(recordedChunks, { type: "video/webm" });
+        startReplay();
+      };
+      mediaRecorder.start();
+      
+      poseStatus.textContent = 'Routine Started - Tracking Performance';
+      poseStatus.style.color = '#ff9800';
+    }
+    
+    function endRoutineAutomatically() {
+      if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+      
+      routineStarted = false;
+      
+      startBtn.disabled = false;
+      startBtn.textContent = 'Ready for Routine';
+      
+      poseStatus.textContent = 'Routine Complete - Ready for Next';
+      poseStatus.style.color = '#4caf50';
+      
+      // Show score display when routine ends
+      scoreDisplay.parentElement.style.display = 'block';
+    }
+    
+    function startReplay() {
+      // Show replay video overlay
+      replaySection.style.display = 'block';
+      replayStatus.style.display = 'block';
+      
+      // Show close button, hide start button
+      document.getElementById('closeReplay').style.display = 'block';
+      document.getElementById('startRoutine').style.display = 'none';
+      
+      // Set up video source
+      const videoUrl = URL.createObjectURL(recordedVideoBlob);
+      replayVideo.src = videoUrl;
+      
+      // Skip first deduction (assume it's mounting)
+      const replayDeductions = deductionTimestamps.length > 0 ? deductionTimestamps.slice(1) : [];
+      console.log(`Starting replay with ${replayDeductions.length} deductions to pause at:`, replayDeductions);
+      
+      // Start countdown
+      let countdown = 3;
+      replayStatus.textContent = `Replay starting in ${countdown} seconds...`;
+      
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          replayStatus.textContent = `Replay starting in ${countdown} seconds...`;
+        } else {
+          clearInterval(countdownInterval);
+          replayStatus.textContent = 'Playing routine - will pause at deductions';
+          startVideoPlayback();
+        }
+      }, 1000);
+    }
+    
+    function enableManualControls() {
+      replayVideo.controls = true;
+      console.log('Native video controls enabled');
+    }
+    
+    function startVideoPlayback() {
+      let currentDeductionIndex = 0;
+      let isPaused = false;
+      
+      const replayDeductions = deductionTimestamps.length > 0 ? deductionTimestamps.slice(1) : [];
+      
+      replayVideo.play();
+      
+      function checkForDeductions() {
+        const currentTime = replayVideo.currentTime;
+        
+        if (!isPaused && currentDeductionIndex < replayDeductions.length) {
+          const nextDeduction = replayDeductions[currentDeductionIndex];
+          
+          if (currentTime >= nextDeduction.time) {
+            isPaused = true;
+            replayVideo.pause();
+            
+            replayStatus.textContent = `DEDUCTION: ${nextDeduction.reason} - Score: ${nextDeduction.score} (pausing 2 seconds)`;
+            replayStatus.style.color = '#ff5722';
+            replayStatus.style.display = 'block';
+            
+            setTimeout(() => {
+              currentDeductionIndex++;
+              isPaused = false;
+              replayVideo.play();
+              
+              if (currentDeductionIndex < replayDeductions.length) {
+                replayStatus.textContent = 'Playing routine - will pause at next deduction';
+              } else {
+                replayStatus.textContent = 'Playing routine - no more deductions';
+              }
+              replayStatus.style.color = '#ff9800';
+              
+              setTimeout(() => {
+                if (!isPaused) replayStatus.style.display = 'none';
+              }, 2000);
+            }, 2000);
+          }
+        }
+      }
+      
+      replayVideo.addEventListener('timeupdate', checkForDeductions);
+      
+      replayVideo.addEventListener('ended', () => {
+        replayStatus.textContent = `Routine Complete! Final Score: ${scoreDisplay.textContent}`;
+        replayStatus.style.color = '#4caf50';
+        replayStatus.style.display = 'block';
+        enableManualControls();
+        replayVideo.currentTime = 0;
+      });
+    }
+
+    startBtn.addEventListener('click', async () => {
+      if (!mediaStream) return alert("Camera not ready yet");
+      
+      try {
+        await fetch(`${API_BASE}/start-setup`, { method: 'POST' });
+        startBtn.textContent = 'Waiting for Salute...';
+        startBtn.disabled = true;
+        poseStatus.textContent = 'Ready - Waiting for Salute';
+        poseStatus.style.color = '#ff9800';
+      } catch (err) {
+        alert("Backend server not running. Start python server.py first.");
+      }
+    });
+
+    closeReplayBtn.addEventListener('click', async () => {
+      // Hide replay overlay
+      replaySection.style.display = 'none';
+      replayStatus.style.display = 'none';
+      
+      // Show start button, hide close button
+      document.getElementById('startRoutine').style.display = 'block';
+      document.getElementById('closeReplay').style.display = 'none';
+      
+      // Stop video and clean up
+      replayVideo.pause();
+      replayVideo.controls = false;
+      if (replayVideo.src) {
+        URL.revokeObjectURL(replayVideo.src);
+      }
+      replayVideo.src = '';
+      
+      // Reset backend
+      try {
+        await fetch(`${API_BASE}/reset-routine`, { method: 'POST' });
+      } catch (err) {}
+      
+      startBtn.disabled = false;
+      startBtn.textContent = 'Ready for Routine';
+      
+      // Reset score display
+      scoreDisplay.parentElement.style.display = 'block';
+      scoreDisplay.textContent = '10.0';
+      circleCountDisplay.textContent = 'Circles: 0.00';
+      
+      // Clear recorded data
+      recordedVideoBlob = null;
+      deductionTimestamps = [];
+      recordedChunks = [];
+      
+      poseStatus.textContent = 'Ready for Next Routine - Score Reset';
+      poseStatus.style.color = '#4caf50';
+      
+      console.log('Replay closed, ready for next routine');
+    });
+    
+  </script>
+</body>
+</html>
